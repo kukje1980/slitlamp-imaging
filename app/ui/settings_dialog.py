@@ -249,9 +249,9 @@ class SettingsDialog(QDialog):
         self.tabs.addTab(self._build_preset_tab(), "촬영 모드")
         self.usb_tab = UsbButtonsTab(config, raw_input=getattr(parent, "usb_raw", None))
         self.tabs.addTab(self.usb_tab, "USB 버튼")
-        self.tabs.addTab(self._build_specs_tab(), "컴퓨터 사양")
         self.backup_tab = BackupTab(config, manager=getattr(parent, "backup", None))
         self.tabs.addTab(self.backup_tab, "백업")
+        self.tabs.addTab(self._build_specs_tab(), "컴퓨터 사양")     # 안내 탭은 맨 끝
 
         btns = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel

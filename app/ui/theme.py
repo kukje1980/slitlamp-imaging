@@ -195,6 +195,12 @@ def build_qss(mode: str = "dark") -> str:
     QPushButton#EyeBtn[eye="OD"]:checked {{ color: {c['od']}; border: 1px solid {c['od']}; }}
     QPushButton#EyeBtn[eye="OS"]:checked {{ color: {c['os']}; border: 1px solid {c['os']}; }}
     QPushButton#EyeBtn[eye="OU"]:checked {{ color: {c['ou']}; border: 1px solid {c['ou']}; }}
+    QToolButton#BackupStatus {{ color: {c['ink_soft']}; padding: 1px 8px; border: none; font-weight: 600; }}
+    QToolButton#BackupStatus:hover {{ color: {c['ink']}; }}
+    QToolButton#BackupStatus[level="ok"] {{ color: {'#3ccf7a' if mode == 'dark' else '#15803d'}; }}
+    QToolButton#BackupStatus[level="running"] {{ color: {c['accent']}; }}
+    QToolButton#BackupStatus[level="warn"] {{ color: {'#ffb454' if mode == 'dark' else '#b45309'}; }}
+    QToolButton#BackupStatus[level="error"] {{ color: {c['record']}; }}
     QLabel#EyeStatus {{
         color: {c['ink_soft']}; background: {c['bg']}; border: 1px solid {c['rule']}; border-radius: 8px;
         padding: 2px 7px; min-height: 18px; font-size: 11px; font-weight: 700;

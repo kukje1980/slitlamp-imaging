@@ -47,9 +47,11 @@ from app.capture.smart_worker import SmartCaptureWorker
 from app.capture.sources import DeviceSource, FileSource, SyntheticSource
 from app.capture.video_recorder import VideoRecorder
 from app.services import sample_import
+from app.services.backup_service import BackupManager
 from app.services.capture_service import CaptureService
 from app.ui import icons
 from app.ui.agent_bar import AgentBar
+from app.ui.backup_tab import BackupStatusButton
 from app.ui.control_bar import ControlBar, tool_button
 from app.ui.exam_screen import ExamScreen
 from app.ui import split_menu
@@ -87,6 +89,9 @@ class MainWindow(QMainWindow):
         self.config = config
         self.db = db
         self.service = CaptureService(db, config)
+        # 백업: 외장 하드 · 다른 드라이브로 저장 즉시(실시간) · 주기적 · 수동 (app/services/backup_service.py)
+        self.backup = BackupManager(config, db, parent=self)
+        self.service.on_saved.append(self.backup.notify_saved)
         self.brand = app_brand.current()
         self.setWindowTitle(self.brand["window_title"] + app_edition.current()["title_suffix"])
         self.setWindowIcon(make_app_icon())
@@ -157,6 +162,8 @@ class MainWindow(QMainWindow):
         if warn:
             log.warning(warn)
             self.statusBar().showMessage(warn, 20000)
+        self.backup.statusChanged.connect(self.btn_backup.set_status)
+        self.backup.start()
 
     # ---- UI 구성 ----
     def _build_ui(self) -> None:
@@ -230,6 +237,10 @@ class MainWindow(QMainWindow):
         outer.addWidget(body, 1)
         self.setCentralWidget(central)
         self.setStatusBar(QStatusBar())
+        self.btn_backup = BackupStatusButton()          # 상태줄 오른쪽: 백업 ✓ 14:32 · 백업 드라이브 없음 … (누르면 설정 → 백업)
+        self.btn_backup.clicked.connect(lambda: self._open_settings("백업"))
+        self.statusBar().addPermanentWidget(self.btn_backup)
+        self.btn_backup.set_status(self.backup.status())
 
         self.pro.savedCapture.connect(self._on_pro_saved)
         self.pro.patientUpdated.connect(self._on_pro_patient_updated)
@@ -2030,6 +2041,7 @@ class MainWindow(QMainWindow):
             size = (self._last_frame.shape[1], self._last_frame.shape[0])
         try:
             self.recorder.start(path, self._estimate_fps(), size, quality=self.config.video_quality)
+            self.backup.set_busy([path])                  # 쓰는 중인 동영상은 백업 전체 확인에서 뺀다
         except Exception as e:  # noqa: BLE001
             log.exception("recorder start failed")
             QMessageBox.warning(self, "오류", f"녹화 시작 실패: {e}")
@@ -2083,6 +2095,7 @@ class MainWindow(QMainWindow):
     def _finalize_video(self) -> None:
         pending, self._pending_video = self._pending_video, None
         self.control_bar.btn_record.setEnabled(self._current_patient is not None)
+        self.backup.set_busy([])                          # 파일을 닫았음 — finish_video 가 백업에 알린다
         if pending is None:
             return
         path, patient, eye, ts, duration, thumb, note = pending
@@ -2206,6 +2219,7 @@ class MainWindow(QMainWindow):
             return
         if accepted:
             dlg.apply_to_config()
+            self.backup.reconfigure()                 # 백업 위치를 처음 정했거나 바꿨으면 바로 백업
             new_active = capture_presets.find(self.config, self.config.active_preset or "")
             if new_active is not None and new_active != old_active:
                 capture_presets.apply_to_config(self.config, new_active)    # 지금 모드를 고쳤으면 바로 반영
@@ -2372,6 +2386,11 @@ class MainWindow(QMainWindow):
         self.smart.stop()
         self.agent.stop()
         self.events.log("session_end")
+        try:
+            self.backup.finish_on_exit(self)              # 환자 기록 DB · 못 한 파일 마무리 (외장 하드가 있으면)
+        except Exception:  # noqa: BLE001
+            log.warning("backup on exit failed", exc_info=True)
+        self.backup.stop()
         try:
             self.db.close()
         except Exception:  # noqa: BLE001

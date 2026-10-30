@@ -45,6 +45,7 @@ from PySide6.QtWidgets import (
 from app import brand as app_brand
 from app import paths, shortcuts, sounds
 from app.capture.camera_controller import CameraController
+from app.services.backup_service import BackupManager
 from app.services.capture_service import CaptureService
 from app.ui import icons, split_menu
 from app.ui.control_bar import tool_button
@@ -63,6 +64,7 @@ from app.ui.patient_dialog import PatientDialog
 from app.ui.pro.image_canvas import ImageCanvas
 from app.ui.pro.pro_workspace import caption_of, load_bgr
 from app.ui.quad_view import SPLIT_COUNTS, QuadView
+from app.ui.backup_tab import BackupStatusButton
 from app.ui.settings_dialog import SettingsDialog
 from app.ui.shortcuts_dialog import ShortcutsDialog
 from app.ui.theme import ICON, ICON_ACCENT, ICON_ON_ACCENT, ICON_RECORD, build_qss, make_app_icon
@@ -80,6 +82,9 @@ class ExplorerWindow(QMainWindow):
         self.config = config
         self.db = db
         self.service = CaptureService(db, config)
+        # 백업: 외장 하드 · 다른 드라이브로 저장 즉시 · 주기적 · 수동 (촬영 창과 같은 설정 · 같은 백업 폴더)
+        self.backup = BackupManager(config, db, parent=self)
+        self.service.on_saved.append(self.backup.notify_saved)
         self.brand = app_brand.current()
         self.setWindowTitle(self.brand["window_title"])
         self.setWindowIcon(make_app_icon())
@@ -112,6 +117,11 @@ class ExplorerWindow(QMainWindow):
         self._build_central()
         self._build_docks()
         self.setStatusBar(QStatusBar())
+        self.btn_backup = BackupStatusButton()
+        self.btn_backup.clicked.connect(lambda: self.open_settings("백업"))
+        self.statusBar().addPermanentWidget(self.btn_backup)
+        self.backup.statusChanged.connect(self.btn_backup.set_status)
+        self.btn_backup.set_status(self.backup.status())
         self._rec_timer = QTimer(self)
         self._rec_timer.setInterval(500)
         self._rec_timer.timeout.connect(self._update_rec_hud)
@@ -126,6 +136,7 @@ class ExplorerWindow(QMainWindow):
         warn = self.service.low_space_warning()
         if warn:
             self._status(warn, 15000)
+        self.backup.start()
 
     # ================= 동작(QAction) =================
     def _act(self, text, icon=None, slot=None, tip="", checkable=False, key=None) -> QAction:
@@ -156,6 +167,8 @@ class ExplorerWindow(QMainWindow):
         self.act_samples = A("샘플 사진 가져오기…", "image", lambda: self.import_samples(),
                              "받아 둔 질환별 샘플 사진 폴더를 등록 — 참조 영상 라이브러리에 질환별로 보입니다")
         self.act_delete_images = A("선택 영상 삭제", "trash", self.delete_selected, "선택한 영상 삭제")
+        self.act_backup_drive = A("외장 하드로 지금 백업", "save", self.backup_to_drive,
+                                  "사진 · 동영상 · 환자 기록을 설정 → 백업 의 위치(외장 하드 · 다른 드라이브)에 백업")
         self.act_backup = A("DB 백업…", "save", self.backup_db, "환자·검사·영상 기록을 백업 파일로 저장")
         self.act_restore = A("DB 복원…", "history", self.restore_db, "백업 파일에서 기록 복원")
         self.act_settings = A("설정…", "sliders", self.open_settings, "카메라·저장 위치·형식 설정")
@@ -197,7 +210,8 @@ class ExplorerWindow(QMainWindow):
         for a in (self.act_new_patient, self.act_edit_patient, self.act_del_patient, None,
                   self.act_new_exam, self.act_edit_exam, self.act_del_exam, None,
                   self.act_import, self.act_export, self.act_delete_images, self.act_samples, None,
-                  self.act_backup, self.act_restore, None, self.act_settings, self.act_shortcuts, None,
+                  self.act_backup_drive, self.act_backup, self.act_restore, None, self.act_settings,
+                  self.act_shortcuts, None,
                   self.act_quit):
             m.addSeparator() if a is None else m.addAction(a)
         m = mb.addMenu("카메라(&C)")
@@ -824,6 +838,7 @@ class ExplorerWindow(QMainWindow):
         path, ts = self.service.begin_video(self.patient, eye=self.eye)
         try:
             self.camera.start_recording(path)
+            self.backup.set_busy([path])                  # 쓰는 중인 동영상은 백업 전체 확인에서 뺀다
         except Exception as e:  # noqa: BLE001
             log.exception("recorder start failed")
             QMessageBox.warning(self, "오류", f"녹화 시작 실패: {e}")
@@ -842,6 +857,7 @@ class ExplorerWindow(QMainWindow):
         self._rec_timer.stop()
         first = self.camera.first_rec_frame
         count, duration = self.camera.stop_recording()
+        self.backup.set_busy([])
         sounds.play("rec_stop")
         self._reset_record_button()
         self._refresh_hud()
@@ -1128,6 +1144,16 @@ class ExplorerWindow(QMainWindow):
         self.set_view("live")
         return len(caps)
 
+    def backup_to_drive(self) -> bool:
+        """설정 → 백업 의 위치로 지금 백업 (위치를 아직 안 정했으면 설정 창의 백업 탭을 연다)."""
+        if not self.backup.root():
+            self.open_settings("백업")
+            return False
+        if self.backup.backup_now():
+            self._status("백업을 시작했습니다 — 상태줄 오른쪽에 진행 상황이 보입니다")
+            return True
+        return False
+
     def backup_db(self, path=None):
         if path is None:
             default = Path(self.config.export_root or os.path.expanduser("~")) / \
@@ -1164,14 +1190,17 @@ class ExplorerWindow(QMainWindow):
         return True
 
     # ================= 보기 · 설정 =================
-    def open_settings(self) -> None:
+    def open_settings(self, tab: str | None = None) -> None:
         dlg = SettingsDialog(self.config, self, actions={
             "camera": self.restart_camera,
             "shortcuts": lambda parent: self.open_shortcuts(),
             "samples": lambda parent: self.import_samples(parent=parent),
         })
+        if tab:
+            dlg.show_tab(tab)
         if dlg.exec():
             dlg.apply_to_config()
+            self.backup.reconfigure()
             self.restart_camera()
 
     def toggle_theme(self) -> None:
@@ -1246,6 +1275,11 @@ class ExplorerWindow(QMainWindow):
             log.warning("stop recording on close failed", exc_info=True)
         self.camera.stop()
         self._save_config()
+        try:
+            self.backup.finish_on_exit(self)
+        except Exception:  # noqa: BLE001
+            log.warning("backup on exit failed", exc_info=True)
+        self.backup.stop()
         try:
             self.db.close()
         except Exception:  # noqa: BLE001

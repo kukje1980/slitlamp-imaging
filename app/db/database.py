@@ -158,6 +158,11 @@ class Database:
     def is_open(self) -> bool:
         return self._conn is not None
 
+    def change_count(self) -> int:
+        """이 연결이 지금까지 바꾼 행 수 (SQLite total_changes) — 백업이 'DB 가 바뀌었는가' 를 볼 때."""
+        with self._lock:
+            return self._conn.total_changes if self._conn is not None else 0
+
 
     # ---- 백업 ----
     @property

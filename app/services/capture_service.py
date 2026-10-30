@@ -92,6 +92,15 @@ class CaptureService:
     def __init__(self, db, config):
         self.db = db
         self.config = config
+        # 파일을 다 저장한 뒤 부를 함수들 (경로들) — 실시간 백업(app/services/backup_service.py)이 바로 복사하게
+        self.on_saved: list = []
+
+    def _notify_saved(self, *paths) -> None:
+        for cb in list(self.on_saved):
+            try:
+                cb(*[str(p) for p in paths if p])
+            except Exception:  # noqa: BLE001
+                log.warning("저장 알림 처리 실패", exc_info=True)
 
     # ---- 사진 ----
     def save_photo(self, frame: np.ndarray, patient: Patient,
@@ -129,6 +138,7 @@ class CaptureService:
         )
         cap.id = self._insert_record(cap)
         log.info("photo saved id=%s path=%s export=%s", cap.id, primary_path, export_path)
+        self._notify_saved(primary_path, thumb_path)
         return cap
 
     # ---- 동영상 ----
@@ -164,6 +174,7 @@ class CaptureService:
         )
         cap.id = self._insert_record(cap)
         log.info("video saved id=%s path=%s export=%s", cap.id, video_path, export_path)
+        self._notify_saved(video_path, thumb_path)
         return cap
 
     # ---- 가져오기 / 참조 영상 (Explorer 판) ----
@@ -192,6 +203,7 @@ class CaptureService:
                        category=category or "기타", title=title or None,
                        description=description or None, source_capture_id=capture.id)
         ref.id = self.db.references.insert(ref)
+        self._notify_saved(path, thumb)
         return ref
 
     # ---- 삭제 ----

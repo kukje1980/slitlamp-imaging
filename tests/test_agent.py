@@ -305,7 +305,8 @@ def test_agent_in_main_window(app_env, monkeypatch):
         n0 = w.thumbnail_panel.count()
         w._on_capture()
         assert w.thumbnail_panel.count() == n0 + 1
-        assert _wait(qapp, lambda: w.agent_bar.strip.isVisible())        # 추천 프레임
+        # 추천 프레임 — 워커가 after_s 뒤 링버퍼 프레임을 풀어 점수를 매긴 다음 보내므로, 느린 CI(윈도우)에선 8초를 넘길 수 있다
+        assert _wait(qapp, lambda: w.agent_bar.strip.isVisible(), 20.0)
         w._on_agent_candidate(0)
         assert w.thumbnail_panel.count() == n0 + 2
         assert _wait(qapp, lambda: any(e["type"] == "clip_saved" for e in w.events.tail),

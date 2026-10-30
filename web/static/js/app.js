@@ -163,6 +163,18 @@
     document.querySelectorAll('.btn-sony-help').forEach((b) => b.addEventListener('click', () => $('sony-dialog').showModal()));
     $('sony-x').addEventListener('click', () => $('sony-dialog').close());
     $('sony-ok').addEventListener('click', () => $('sony-dialog').close());
+    // 컴퓨터 사양 · 동영상 화질 설명 — 브라우저가 알려 주는 범위(코어 수 · 대략의 메모리)로 이 PC 를 표시
+    $('btn-specs').addEventListener('click', () => {
+      const cores = navigator.hardwareConcurrency, mem = navigator.deviceMemory;   // deviceMemory 는 Chrome 만, 8GB 가 상한
+      const bits = [];
+      if (cores) bits.push(`CPU ${cores}코어`);
+      if (mem) bits.push(mem >= 8 ? '메모리 8GB 이상' : `메모리 약 ${mem}GB`);
+      let verdict = '';
+      if (cores && mem) verdict = (cores >= 4 && mem >= 8) ? ' — 최소 사양 충족 (1080p 촬영·녹화 OK)' : ' — 최소 사양에 미치지 못할 수 있습니다';
+      $('specs-this-pc').textContent = bits.length ? `이 PC: ${bits.join(' · ')}${verdict}` : '이 PC 의 사양은 브라우저가 알려 주지 않습니다. 아래 표와 직접 비교해 보세요.';
+      $('specs-dialog').showModal();
+    });
+    $('specs-x').addEventListener('click', () => $('specs-dialog').close());
     $('btn-pause').addEventListener('click', togglePause);
     $('btn-capture').addEventListener('click', capturePhoto);
     $('btn-record').addEventListener('click', toggleRecord);

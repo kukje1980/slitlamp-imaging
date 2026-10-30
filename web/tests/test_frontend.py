@@ -134,3 +134,17 @@ def test_capture_safety_guards_wired():
     assert "if (id) { selectPatient(id); return; }" in app_js
     # 서버·폴더 모두 실패하면 내려받기로 보존
     assert "a.download = filename" in app_js
+
+
+def test_system_specs_dialog_wired():
+    """설정 → 컴퓨터 사양: 최소·권장 사양 표와 동영상 화질(일반·고화질) 설명."""
+    app_js = (WEB / "static/js/app.js").read_text(encoding="utf-8")
+    css = (WEB / "static/css/app.css").read_text(encoding="utf-8")
+    for el in ("btn-specs", "specs-dialog", "specs-x", "specs-this-pc"):
+        assert f'id="{el}"' in HTML, el
+    body = HTML[HTML.index('id="specs-dialog"'):HTML.index("</dialog>", HTML.index('id="specs-dialog"'))]
+    for s in ("최소 사양", "권장 사양", "메모리(RAM)", "16GB", "그래픽카드", "USB 3.0", "일반", "고화질",
+              "분당 38MB", "분당 375MB", "Chrome"):
+        assert s in body, s
+    assert "$('btn-specs').addEventListener" in app_js and "navigator.hardwareConcurrency" in app_js
+    assert ".spec-table" in css and ".specs-dialog" in css

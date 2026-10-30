@@ -9,7 +9,7 @@ import os
 
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
-APP_VERSION = "1.18.5"
+APP_VERSION = "1.19.0"
 BRAND = os.environ.get("SLITLAMP_BUILD_BRAND", "default").lower()
 AGENT = os.environ.get("SLITLAMP_BUILD_EDITION", "standard").lower() == "agent"
 # 판별 (앱 이름, 표시 이름, 아이콘, 번들 ID, 런타임 훅)
@@ -98,7 +98,7 @@ app = BUNDLE(
         "CFBundleDisplayName": DISPLAY_NAME,
         "CFBundleShortVersionString": APP_VERSION,
         "CFBundleVersion": APP_VERSION,
-        "LSMinimumSystemVersion": "11.0",
+        "LSMinimumSystemVersion": "14.0",
         "NSHighResolutionCapable": True,
         # 카메라(HDMI 캡처 장비) 접근 시 macOS 가 보여 주는 권한 요청 문구 — 없으면 카메라를 열 수 없다
         "NSCameraUsageDescription": "세극등 HDMI 캡처 장비(카메라)의 실시간 영상을 촬영·녹화하기 위해 카메라 접근이 필요합니다.",

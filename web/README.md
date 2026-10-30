@@ -51,7 +51,7 @@ HTTPS 주소라서 카메라·저장 폴더 기능도 그대로 동작합니다.
 
 ### Render (권장 — 사진·동영상 모두 저장)
 1. [render.com](https://render.com) 에 GitHub 계정으로 로그인
-2. **New → Blueprint** → 저장소 `slitlamp-imaging` 선택 → 브랜치 `claude/slit-lamp-imaging-system-ecM9y` (병합 후에는 `main`)
+2. **New → Blueprint** → 저장소 `slitlamp-imaging` 선택 → 브랜치 `main`
 3. 저장소의 `render.yaml` 이 자동으로 읽힙니다. **SLITLAMP_PASSWORD**(접속 비밀번호) 입력란에 비밀번호를 넣고 **Apply**
 4. 몇 분 뒤 `https://slitlamp-imaging.onrender.com` 같은 주소가 생깁니다 → 접속 → 비밀번호 입력
 

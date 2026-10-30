@@ -710,6 +710,48 @@
           <svg class="ic"><use href="#i-sound"/></svg><span id="sounds-label">효과음 켜짐</span>
         </button></div>
     </section>
+    <section class="set-sec">
+      <h4><svg class="ic"><use href="#i-info"/></svg>컴퓨터 사양</h4>
+      <button class="btn btn-sm btn-quiet set-link" id="btn-specs" title="최소 · 권장 사양과 동영상 화질 모드(일반 · 고화질) 설명"><svg class="ic"><use href="#i-info"/></svg>최소 · 권장 사양 · 동영상 화질 설명</button>
+    </section>
+  </div>
+</dialog>
+
+<dialog id="specs-dialog" class="specs-dialog" aria-labelledby="specs-title">
+  <div class="dialog-header">
+    <div class="dialog-title" id="specs-title">컴퓨터 사양 · 동영상 화질</div>
+    <button class="btn btn-ghost btn-icon" type="button" id="specs-x" aria-label="닫기"><svg class="ic"><use href="#i-x"/></svg></button>
+  </div>
+  <div class="dialog-body specs-body">
+    <p id="specs-this-pc" class="specs-pc"></p>
+    <p><b>최소</b>: 1080p 촬영·녹화(일반 화질)가 끊기지 않는 선 · <b>권장</b>: 4K 촬영·고화질 녹화까지 여유 있게 — 이 이상이면 편하게 쓸 수 있습니다.</p>
+    <table class="spec-table">
+      <thead><tr><th>항목</th><th>최소 사양</th><th>권장 사양</th></tr></thead>
+      <tbody>
+        <tr><td>운영체제</td><td>Windows 10 64비트(22H2) 또는 11 · macOS 14 이상</td><td>Windows 11 64비트 · macOS 14 이상</td></tr>
+        <tr><td>브라우저 (웹 버전)</td><td>최신 Chrome 또는 Edge</td><td>최신 Chrome 또는 Edge <small>Firefox·Safari 는 'PC 폴더에 저장'을 쓸 수 없습니다</small></td></tr>
+        <tr><td>CPU</td><td>4코어 이상, 최근 6년 안의 CPU (Intel Core i3 10세대 · AMD Ryzen 3 3000 이상)</td><td>6코어 이상 (Intel Core i5 12세대 · AMD Ryzen 5 5600 이상) — 8코어면 더 여유</td></tr>
+        <tr><td>메모리(RAM)</td><td>8GB</td><td>16GB</td></tr>
+        <tr><td>그래픽카드</td><td>내장 그래픽으로 충분 <small>영상 압축은 CPU 가 합니다 — 별도 그래픽카드 불필요</small></td><td>내장 그래픽으로 충분</td></tr>
+        <tr><td>저장장치</td><td>SSD 256GB 이상, 여유 공간 50GB 이상 유지</td><td>NVMe SSD 1TB 이상 + 네트워크(NAS)·외장 백업</td></tr>
+        <tr><td>카메라 연결</td><td>USB 2.0 (1080p 캡처 장비) · 4K 는 USB 3.0</td><td>USB 3.0 이상 포트에 직접 연결 (USB 허브 없이)</td></tr>
+        <tr><td>모니터</td><td>1920×1080</td><td>1920×1080 이상 · 4K 영상을 세밀하게 보려면 27인치 4K</td></tr>
+      </tbody>
+    </table>
+    <h4>동영상 화질 모드 (설정 → 동영상 화질)</h4>
+    <table class="spec-table">
+      <thead><tr><th>모드</th><th>쓰는 때</th><th>화질</th><th>파일 크기 (웹 녹화)</th></tr></thead>
+      <tbody>
+        <tr><td><b>일반</b> (기본)</td><td>진료 기록용 — 가볍고 파일이 작음</td><td>표준 화질</td><td>1080p 5Mbps ≈ 분당 38MB<br/>4K 20Mbps ≈ 분당 150MB</td></tr>
+        <tr><td><b>고화질</b></td><td>세밀한 관찰 · 발표 · 교육 자료</td><td>더 선명 — 파일 약 2.5배</td><td>1080p 12Mbps ≈ 분당 90MB<br/>4K 50Mbps ≈ 분당 375MB</td></tr>
+      </tbody>
+    </table>
+    <ul class="specs-notes">
+      <li>두 모드 모두 실시간(초당 30장)으로 녹화됩니다. 차이는 화질과 파일 크기입니다.</li>
+      <li>윈도우·맥 앱은 H.264 로 저장합니다 — 일반 CRF 23 · 고화질 CRF 18(원본과 눈으로 구분이 어려운 수준). 파일 크기는 영상에 따라 1080p 일반 분당 약 20~150MB · 고화질 50~300MB, 4K 일반 100~500MB · 고화질 300MB~1GB 입니다.</li>
+      <li>긴 녹화 전에는 저장 폴더의 여유 공간을 확인하세요. 서버 업로드 한도(기본 1GB)를 넘으면 서버 저장은 실패하지만 PC 폴더·내려받기로 영상은 보존됩니다.</li>
+      <li>측정 기준: 4코어 2.1GHz 서버용 CPU(그래픽카드 없음)에서 1080p·4K 모두 두 모드가 실시간으로 녹화됐습니다.</li>
+    </ul>
   </div>
 </dialog>
 

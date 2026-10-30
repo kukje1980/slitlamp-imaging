@@ -189,6 +189,10 @@ v1.8.0 이후 `main` 에 들어온 변경을 모두 합친 최종판입니다 (`
   사진 · 동영상을 모두 삭제 (`CaptureService.captures_on` / `delete_day`). 검사 소견 · export 사본은 보존.
 
 ## v1.20.0 — 2026-10-30
+- **최종 통합판**: 새 저장소 v1.19.0(안전 수정 · 동영상 화질 · 컴퓨터 사양 · 카메라 목록) + 옛 저장소 v1.19.0 ~ v1.19.2 · v1.20.0 을 하나로.
+- **외장 하드 백업**(`app/services/backup_service.py`, 설정 → 백업 · 상태줄 백업 버튼), **효과음 크기**(`config.sound_volume`, 앱 · 웹),
+  **촬영 목록 120장씩 그리기**(`ThumbnailPanel.PAGE`), **USB 버튼 진단 도구**(`tools/usb_buttons_probe.py`).
+- 넣지 않음: 썸네일 오른쪽 클릭 메뉴(`photo-list-select-send`), 끊김 방지 대형 수정 3e96f16(v1.6 기준) — docs/RELEASE-1.20.0.md 참고.
 - **상단 질환 아이콘 줄**(`app/ui/dx_bar.py`): 상단바 환자 검색 오른쪽 빈 공간에 샘플 질환(설치판 11개) + 등록한 참조 분류의 작은 아이콘.
   누르면 참조 줄을 열어 그 분류를 보이고(`RefBar.show_category`), 그 사진 최대 4장을 고르며(`choose_only_current`),
   고른 환자 사진이 없으면 가장 최근 사진을 골라 멀티 화면에 같이 놓는다. 다시 누르면 그 질환 사진을 뺌. 참조 사진을 다 빼면 아이콘도 꺼짐.

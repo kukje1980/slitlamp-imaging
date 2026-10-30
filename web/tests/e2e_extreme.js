@@ -86,6 +86,13 @@ const check = (name, ok, info = '') => { results.push({ name, ok, info }); conso
   const brN = await brOf('normal'), brH = await brOf('high');
   check('동영상 화질: 고화질이 일반보다 높은 비트레이트로 녹화', brH > brN * 2 && brN > 1e6, `일반 ${(brN / 1e6).toFixed(1)}Mbps · 고화질 ${(brH / 1e6).toFixed(1)}Mbps`);
 
+  // 5-2) 설정 → 컴퓨터 사양: 최소·권장 표와 화질 모드 설명이 뜨고 '이 PC' 줄이 채워진다
+  await page.click('#btn-settings'); await page.click('#btn-specs'); await sleep(300);
+  const specs = await page.evaluate(() => ({ open: document.getElementById('specs-dialog').open,
+    text: document.getElementById('specs-dialog').innerText, pc: document.getElementById('specs-this-pc').textContent }));
+  check('설정 → 컴퓨터 사양 설명이 열리고 내용이 있음', specs.open && specs.text.includes('권장 사양') && specs.text.includes('고화질') && specs.pc.length > 0, specs.pc);
+  await page.click('#specs-x'); await page.click('#settings-x'); await sleep(200);
+
   // 6) 녹화 중 카메라 끊김 (USB 빠짐)
   const v0 = (await caps(A.id)).filter(c => c.media_type === 'video').length;
   await page.click('#btn-record'); await sleep(1200);

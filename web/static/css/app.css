@@ -704,3 +704,17 @@ body.exam-on .workspace { display: none; }
 .exam-pinfo .pi small { display: block; color: var(--ink-muted); font-size: 11px; }
 .rp-box.filled { white-space: pre-wrap; padding: 6px 8px; font-size: 10pt; line-height: 1.6; }
 @media (max-width: 1100px) { .exam { grid-template-columns: 200px minmax(0, 1fr); } .exam-patient { display: none; } }
+
+/* 컴퓨터 사양 · 동영상 화질 설명 (설정 → 컴퓨터 사양) */
+.specs-dialog { max-width: 720px; }
+.specs-body { display: grid; gap: 12px; font-size: 13px; line-height: 1.6; }
+.specs-body p, .specs-body h4 { margin: 0; }
+.specs-body h4 { font-size: 12px; font-weight: 700; letter-spacing: .05em; color: var(--ink-muted); text-transform: uppercase; }
+.specs-pc { font-weight: 600; color: var(--accent-strong); }
+.specs-pc:empty { display: none; }
+.spec-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.spec-table th { text-align: left; font-size: 11.5px; color: var(--ink-muted); font-weight: 700; padding: 6px 8px; border-bottom: 1px solid var(--rule); }
+.spec-table td { padding: 7px 8px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+.spec-table td:first-child { white-space: nowrap; font-weight: 600; }
+.spec-table small { display: block; font-size: 11px; color: var(--ink-muted); }
+.specs-notes { margin: 0; padding-left: 18px; display: grid; gap: 4px; color: var(--ink-soft); font-size: 12.5px; }

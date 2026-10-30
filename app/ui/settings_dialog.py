@@ -22,12 +22,14 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from app import system_specs
 from app.capture.frame_utils import device_names, enumerate_devices, is_sony
 from app.ui import icons
 from app.ui.theme import ICON_ACCENT
@@ -219,6 +221,7 @@ class SettingsDialog(QDialog):
         self.tabs.addTab(self._build_preset_tab(), "촬영 모드")
         self.usb_tab = UsbButtonsTab(config, raw_input=getattr(parent, "usb_raw", None))
         self.tabs.addTab(self.usb_tab, "USB 버튼")
+        self.tabs.addTab(self._build_specs_tab(), "컴퓨터 사양")
 
         btns = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -240,6 +243,20 @@ class SettingsDialog(QDialog):
             QMessageBox.warning(self, "USB 버튼", bad)
             return
         super().accept()
+
+    def _build_specs_tab(self) -> QWidget:
+        """컴퓨터 사양 — 이 PC 확인 + 최소·권장 사양 + 동영상 화질 모드 설명 (app/system_specs.py)."""
+        info = system_specs.detect(getattr(self.config, "media_root", None))
+        self.specs_label = QLabel(system_specs.html(info))
+        self.specs_label.setWordWrap(True)
+        self.specs_label.setTextFormat(Qt.TextFormat.RichText)
+        self.specs_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+        self.specs_label.setContentsMargins(8, 4, 8, 8)
+        area = QScrollArea()
+        area.setWidgetResizable(True)
+        area.setFrameShape(QFrame.Shape.NoFrame)
+        area.setWidget(self.specs_label)
+        return area
 
     def show_tab(self, name: str) -> None:
         for i in range(self.tabs.count()):

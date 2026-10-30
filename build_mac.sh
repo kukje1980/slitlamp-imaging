@@ -5,7 +5,7 @@
 #          ./build_mac.sh explorer   (Explorer 판) → dist/SlitLampExplorer.app + .dmg
 #          ./build_mac.sh keeler_explorer (Keeler Explorer 판) → dist/KeelerExplorer.app + .dmg
 #          ./build_mac.sh agent      (AI 에이전트 에디션) → dist/SlitLampAgent.app + .dmg
-# 필요:   macOS 11 이상, Python 3.11 이상 (python.org 설치본 또는 Homebrew)
+# 필요:   macOS 14 이상 (동봉 OpenCV·numpy 요구), Python 3.11 이상 (python.org 설치본 또는 Homebrew)
 set -euo pipefail
 cd "$(dirname "$0")"
 

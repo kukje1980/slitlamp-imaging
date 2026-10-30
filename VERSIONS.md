@@ -13,7 +13,7 @@
 | v1.5 | 2026-10-24 | 설정(톱니) 창으로 상단 정리 + 마이봄샘(meibography) 촬영·분석 모드 | `546db8d` | [zip](https://github.com/kukje1980/slitlamp-imaging/archive/546db8d7e65007686f5c2b1a2d0bd76dd388ce9b.zip) | [web/](https://github.com/kukje1980/slitlamp-imaging/tree/546db8d7e65007686f5c2b1a2d0bd76dd388ce9b/web) |
 | v1.6 | 2026-10-24 | 전체 점검 버그 수정(웹·Pro·서버·데스크탑), 맥 dmg 생성 재시도, 녹화 길이 정확도 수정, 윈도우 설치파일 릴리스 자동 게시 | `f5c8cee` | [zip](https://github.com/kukje1980/slitlamp-imaging/archive/f5c8cee630621f4f9ecf100dc32545c27fcaa0fe.zip) | [web/](https://github.com/kukje1980/slitlamp-imaging/tree/f5c8cee630621f4f9ecf100dc32545c27fcaa0fe/web) |
 
-- 윈도우 설치파일(Setup.exe, 최신 main 빌드): https://github.com/kukje1980/slitlamp-imaging/releases/tag/windows-latest
+- 설치파일(윈도우 Setup.exe · 맥 dmg · 웹 zip, 최신 배포판): https://github.com/kukje1980/slitlamp-imaging/releases/latest
 - 터미널에서 특정 버전으로 되돌리기: `git checkout <커밋>` (예: `git checkout 150942c`)
 
 ## v1.7 — 2026-10-25
@@ -164,3 +164,12 @@ v1.8.0 이후 `main` 에 들어온 변경을 모두 합친 최종판입니다 (`
   입력칸 · 다른 화면 · 다른 창의 신호는 보류 후 적용. 사진은 찍은 순간의 눈(정지 화면은 정지 순간), 녹화는 시작 눈 + 전환은 코멘트.
 - `app/usb_raw_input.py`: Windows Raw Input 으로 감시 키의 장치 확인 · 재연결 알림 (실장비 미확인, 맥 · 실패 시 모두 받음).
   설정 → USB 버튼: `usb_eye_auto` · `usb_device_check`. 웹은 v1.18.4 와 같음.
+
+## v1.19.0 — 2026-10-30
+- 저장소를 `kukje1980/slitlamp-imaging` 으로 옮긴 뒤 첫 정식 배포판 (v1.18.5 이후 main 변경 전부 포함).
+- 극한 상황 안전 수정(#45): 같은 순간 저장 덮어쓰기 금지(`reserve_unique`, 'x' 모드), 녹화 중 환자 전환 시 녹화 종료, 녹화 길이 monotonic,
+  인코더 마무리 뒤에만 DB · 내보내기(Explorer 판 포함), 4K 대기 큐 약 800MB 제한, 긴 / 한글 / 장치 이름 폴더 처리, config BOM · 범위 검사,
+  웹 차트번호 공백 · 검색 와일드카드 · 삭제 범위 · 카메라 끊김 · 새로고침 경고. `tests/test_extreme.py` · `web/tests/test_extreme.py` · `web/tests/e2e_extreme.js`.
+- 동영상 화질 `video_quality` normal / high (#45): 앱 CRF 23 / 18 + 해상도별 preset(1080p veryfast · 4K ultrafast), 웹 비트레이트 고정.
+- 설정 → 컴퓨터 사양 탭(#1, `app/system_specs.py`): 최소 · 권장 표, 화질 모드 설명, 이 PC 판정. 웹 설정 → 컴퓨터 사양 설명 창. README 표.
+- 카메라 목록 파서 수정 · 설정 창 카메라 선택 (#28). macOS 최소 버전 14 명시 (`LSMinimumSystemVersion`).

@@ -179,3 +179,14 @@ def test_after_capture_viewer_wired():
     assert "openViewer(rec, parseTs(rec.captured_at), { afterCapture: true })" in APP_JS
     assert "slitlamp-view-after" in APP_JS and "keymap.capture" in APP_JS
     assert "dialog.viewer-dialog.after-capture" in CSS
+
+
+def test_sound_volume_wired():
+    """효과음 크기 슬라이더: 설정 창 요소 + sounds.js 의 volume/setVolume + 재생 시 GainNode."""
+    APP_JS = (WEB / "static/js/app.js").read_text(encoding="utf-8")
+    SND_JS = (WEB / "static/js/sounds.js").read_text(encoding="utf-8")
+    assert 'id="sound-volume"' in HTML and 'id="sound-volume-out"' in HTML
+    assert "slitlamp-sound-volume" in SND_JS and "createGain" in SND_JS
+    assert "setVolume" in SND_JS and "volume, setVolume" in SND_JS
+    assert "$('sound-volume')" in APP_JS and "SlitSounds.setVolume" in APP_JS
+    assert "play('shutter', Number(vol.value))" in APP_JS       # 놓으면 들려 준다

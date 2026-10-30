@@ -8,9 +8,11 @@
  * 음원은 /static/sounds/*.wav (tools/generate_sounds.py 로 합성). Web Audio 로 재생해 지연이 거의 없다.
  * 브라우저 자동재생 정책 때문에 AudioContext 는 첫 클릭/키 입력 때 만든다 (효과음은 항상 사용자 조작 뒤에 난다).
  * 켜기/끄기: localStorage 'slitlamp-sounds' = 'on'(기본) | 'off'  →  설정 창의 '효과음' 버튼.
+ * 크기: localStorage 'slitlamp-sound-volume' = 0~100 (기본 100)  →  설정 창의 '효과음 크기' 슬라이더.
  */
 (() => {
   const KEY = 'slitlamp-sounds';
+  const VOL_KEY = 'slitlamp-sound-volume';
   const FILES = {
     shutter: '/static/sounds/shutter.wav',
     freeze: '/static/sounds/freeze.wav',
@@ -27,6 +29,17 @@
   function setEnabled(on) {
     try { localStorage.setItem(KEY, on ? 'on' : 'off'); } catch (_) { /* 저장 불가 */ }
     if (on) unlock();
+  }
+  function volume() {
+    try {
+      const v = parseInt(localStorage.getItem(VOL_KEY), 10);
+      return Number.isFinite(v) ? Math.max(0, Math.min(100, v)) : 100;
+    } catch (_) { return 100; }
+  }
+  function setVolume(v) {
+    const n = Math.max(0, Math.min(100, Math.round(Number(v) || 0)));
+    try { localStorage.setItem(VOL_KEY, String(n)); } catch (_) { /* 저장 불가 */ }
+    return n;
   }
 
   function context() {
@@ -68,21 +81,26 @@
     Object.keys(FILES).forEach((n) => { decode(n); });
   }
 
-  function start(c, buf) {
+  function start(c, buf, vol) {
+    const v = (vol == null ? volume() : vol) / 100;
+    if (v <= 0) return;
     const s = c.createBufferSource();
     s.buffer = buf;
-    s.connect(c.destination);
+    const g = c.createGain();
+    g.gain.value = v;
+    s.connect(g);
+    g.connect(c.destination);
     s.start();
   }
 
   /** 효과음 재생. 재생을 시도했으면 true (꺼짐·미지원이면 false). 디코딩이 아직이면 끝나는 대로 낸다. */
-  function play(name) {
-    if (!enabled() || !FILES[name]) return false;
+  function play(name, vol) {
+    if (!FILES[name] || (vol == null && !enabled())) return false;
     const c = context();
     if (!c) return false;
     const buf = buffers[name];
-    if (buf) { start(c, buf); return true; }
-    decode(name).then((b) => { if (b) start(c, b); });
+    if (buf) { start(c, buf, vol); return true; }
+    decode(name).then((b) => { if (b) start(c, b, vol); });
     return true;
   }
 
@@ -90,5 +108,5 @@
   document.addEventListener('pointerdown', unlock, { once: true, capture: true });
   document.addEventListener('keydown', unlock, { once: true, capture: true });
 
-  window.SlitSounds = { play, enabled, setEnabled, names: Object.keys(FILES) };
+  window.SlitSounds = { play, enabled, setEnabled, volume, setVolume, names: Object.keys(FILES) };
 })();

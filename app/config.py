@@ -60,6 +60,7 @@ class AppConfig:
     start_screen: str = "home"               # 시작 화면: home(홈 메뉴) | capture(바로 촬영)
     home_image: str = ""                     # 홈 화면 큰 사진 (비면 브랜드 기본 사진 · 그림)
     sounds_enabled: bool = True              # 효과음 (캡처 찰칵 · 정지영상 · 녹화 시작/중지)
+    sound_volume: int = 100                  # 효과음 크기 0~100
     clinic_name: str = ""                    # 인쇄 보고서 머리말 기관명
     px_per_mm: float = 0.0                   # 측정 눈금 보정 (0 = 미보정, px 단위)
     brand: str = ""                          # 화면 브랜드 (비면 기본, "keeler" = Keeler 전용)

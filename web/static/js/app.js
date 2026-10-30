@@ -124,6 +124,16 @@
     $('btn-theme').addEventListener('click', toggleTheme);
     $('btn-sounds').addEventListener('click', () => setSounds(!soundsOn()));
     syncSoundsButton();
+    const vol = $('sound-volume'), volOut = $('sound-volume-out');
+    vol.value = String(window.SlitSounds ? window.SlitSounds.volume() : 100);
+    volOut.textContent = vol.value + '%';
+    vol.addEventListener('input', () => {                      // 끌면서 숫자만 갱신
+      volOut.textContent = vol.value + '%';
+      if (window.SlitSounds) window.SlitSounds.setVolume(vol.value);
+    });
+    vol.addEventListener('change', () => {                     // 놓으면 그 크기로 들려 준다
+      try { if (window.SlitSounds) window.SlitSounds.play('shutter', Number(vol.value)); } catch (_) { /* 무시 */ }
+    });
     $('btn-storage').addEventListener('click', openStorageDialog);
     $('storage-x').addEventListener('click', () => $('storage-dialog').close());
     $('storage-cancel').addEventListener('click', () => $('storage-dialog').close());

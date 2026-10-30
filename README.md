@@ -238,9 +238,11 @@ Finder 에서 `run_mac.command` 더블클릭(처음 한 번 자동 설치). 하�
 | 정지영상(스틸) · Pro CAPTURE | 가벼운 **틱** 과 짧은 여운 (합성) |
 | 녹화 시작 / 중지 | 안드로이드 카메라의 녹화 시작/중지음 (AOSP, Apache 2.0) |
 
-- 윈도우·맥 앱: **설정 → 효과음** 체크로 켜고 끕니다 (`config.json` 의 `sounds_enabled`).
+- 윈도우·맥 앱: **설정 → 효과음** 체크로 켜고 끄고, **효과음 크기** 슬라이더(0~100%, '들어보기')로 크기를 정합니다
+  (`config.json` 의 `sounds_enabled`, `sound_volume`). 윈도우는 음량을 적용한 소리 사본을 캐시해 재생합니다.
   재생은 Windows `winsound` → Qt `QSoundEffect` → `afplay`/`paplay` 순으로 가능한 수단을 쓰고, 없으면 조용히 생략합니다.
-- 웹: **설정 → 효과음** 버튼 (브라우저에 저장, `slitlamp-sounds`). Web Audio 로 재생해 지연이 거의 없습니다.
+- 웹: **설정 → 효과음** 버튼과 **효과음 크기** 슬라이더 (브라우저에 저장, `slitlamp-sounds`, `slitlamp-sound-volume`).
+  Web Audio 로 재생해 지연이 거의 없습니다.
 - 소리를 바꾸려면 `tools/sound_candidates/` 의 다른 후보(실제 녹음 16종, README 에 출처)를 `tools/generate_sounds.py` 의 `REAL` 에 지정하고 실행합니다 (데스크탑·웹 두 곳에 같은 파일을 씁니다).
 
 ## Smart Capture (데스크탑 앱)

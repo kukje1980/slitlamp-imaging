@@ -714,6 +714,11 @@
         <button class="btn btn-sm" id="btn-sounds" title="사진 캡처 '찰칵' · 정지영상 · 녹화 시작/중지 소리" aria-pressed="true">
           <svg class="ic"><use href="#i-sound"/></svg><span id="sounds-label">효과음 켜짐</span>
         </button></div>
+      <div class="set-row"><span>효과음 크기</span>
+        <span class="set-inline set-volume">
+          <input type="range" id="sound-volume" min="0" max="100" step="5" value="100" aria-label="효과음 크기" title="효과음 크기 (0 = 무음) · 놓으면 들려 줍니다">
+          <output id="sound-volume-out" for="sound-volume">100%</output>
+        </span></div>
     </section>
     <section class="set-sec">
       <h4><svg class="ic"><use href="#i-info"/></svg>컴퓨터 사양</h4>

@@ -619,6 +619,8 @@ dialog.settings-pop { margin: 64px 14px auto auto; width: min(420px, 94vw); }
 .set-row > .btn, .set-inline { justify-self: start; }
 .set-inline { display: inline-flex; align-items: center; gap: 10px; }
 .set-link { justify-self: start; color: var(--accent-strong); }
+.set-volume input[type=range] { width: 160px; accent-color: var(--accent); }
+.set-volume output { min-width: 40px; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
 /* 마이봄 모드에서 좁은 화면: 보조 버튼은 아이콘만 */
 @media (max-width: 1400px) {
   body.meibo-on #btn-pause, body.meibo-on #btn-fullscreen, body.meibo-on #btn-freeze { font-size: 0; gap: 0; padding: 0 10px; }

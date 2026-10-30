@@ -193,6 +193,39 @@ class RefBar(QFrame):
         self.lbl_count.setText(f"{n}장 고름" if n else "")
         self.b_clear.setEnabled(bool(n))
 
+    # ---- 상단 질환 아이콘(DxBar)에서 ----
+    def category_key(self) -> tuple:
+        return tuple(self.c_cat.currentData() or ALL)
+
+    def show_category(self, source: str, category) -> bool:
+        """분류를 (source, category) 로 바꿔 그 사진들을 보인다. 없는 분류면 False."""
+        if not self._loaded:
+            self.reload()
+        want = (source, category)
+        # findData 는 파이썬 튜플을 QVariant 로 비교하지 못할 수 있어 직접 찾는다
+        i = next((k for k in range(self.c_cat.count()) if tuple(self.c_cat.itemData(k) or ()) == want), -1)
+        if i < 0:
+            return False
+        if self.c_cat.currentIndex() == i:
+            self._load()
+        else:
+            self.c_cat.setCurrentIndex(i)          # → _load
+        return True
+
+    def choose_only_current(self, limit: int | None = None) -> list:
+        """지금 보이는 분류의 사진만 고른다 (다른 분류에서 고른 것은 뺌). limit 장까지. 고른 목록을 돌려준다."""
+        refs = self._refs[:limit] if limit else list(self._refs)
+        self._chosen = {ref_key(r): r for r in refs}
+        self.list.blockSignals(True)
+        for i, r in enumerate(self._refs):
+            it = self.list.item(i)
+            if it is not None:
+                it.setSelected(ref_key(r) in self._chosen)
+        self.list.blockSignals(False)
+        self._sync_labels()
+        self.selectionChanged.emit(self.selected_refs())
+        return self.selected_refs()
+
     # ---- 고른 참조 사진 ----
     def refs(self) -> list:
         """지금 분류에서 보이는 참조 사진."""

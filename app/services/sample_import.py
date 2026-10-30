@@ -27,6 +27,7 @@ import unicodedata
 import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -161,6 +162,44 @@ def import_samples(db, config, source) -> SampleImportResult:
 
 
 # ---- 참조 영상으로 보기 (Explorer 판 참조 영상 라이브러리) ----
+BUNDLE_NAME = "일반외래_슬릿램프_질환순"
+BUNDLE_ID = "outpatient-26-v1"   # 설치판에 넣은 샘플 묶음 — 바뀌면 다음 실행 때 새 사진만 더 등록
+
+
+def bundled_samples_dir() -> Optional[Path]:
+    """설치판에 들어 있는 질환별 샘플 사진 폴더 (assets/samples/…). 없으면 None."""
+    base = getattr(sys, "_MEIPASS", None)          # PyInstaller 번들 안
+    root = Path(base) / "assets" if base else Path(__file__).resolve().parents[2] / "assets"
+    d = root / "samples" / BUNDLE_NAME
+    return d if (d / "metadata.json").is_file() else None
+
+
+def ensure_bundled_samples(db, config) -> Optional[SampleImportResult]:
+    """설치판의 샘플 사진을 처음 한 번만 질환별 샘플 환자로 등록한다.
+
+    등록을 마치면 설정에 묶음 이름을 적어 둔다 — 사용자가 샘플 환자를 지워도 다시 넣지 않는다.
+    이미 같은 사진이 있으면(예전에 '샘플' 로 가져옴) 내용 해시로 건너뛴다.
+    """
+    if getattr(config, "bundled_samples", "") == BUNDLE_ID:
+        return None
+    src = bundled_samples_dir()
+    if src is None:
+        return None
+    try:
+        result = import_samples(db, config, src)
+    except (OSError, ValueError):
+        log.warning("bundled sample import failed", exc_info=True)
+        return None
+    if not result.failed:
+        config.bundled_samples = BUNDLE_ID
+        try:
+            config.save()
+        except Exception:  # noqa: BLE001
+            log.warning("bundled sample flag save failed", exc_info=True)
+    log.info("bundled samples: %s", result.summary())
+    return result
+
+
 def is_sample_patient(patient) -> bool:
     return bool(patient is not None and (patient.chart_no or "").startswith(CHART_PREFIX))
 

@@ -40,7 +40,7 @@ from app.ui.control_bar import tool_button
 from app.ui.fit import HScroll
 from app.ui.patient_panel import age_of
 from app.ui.pro import print_util
-from app.ui.theme import ICON, ICON_ACCENT, ICON_ON_ACCENT
+from app.ui.theme import ICON, ICON_ACCENT, ICON_ON_ACCENT, ICON_RECORD
 from app.ui.thumbnail_panel import day_label
 from app.ui.thumbnail_widget import ThumbnailWidget
 
@@ -69,6 +69,7 @@ class ExamScreen(QWidget):
     openCapture = Signal(object)          # Capture 클릭 → 보기
     openInPro = Signal()                  # 'Pro 검토에서 열기'
     editPatient = Signal()
+    deleteDay = Signal(str)               # 'YYYY-MM-DD' — '날짜 삭제': 이 날 영상 모두 삭제 요청 (실제 삭제는 메인 창)
 
     def __init__(self, db, config, parent=None):
         super().__init__(parent)
@@ -154,13 +155,18 @@ class ExamScreen(QWidget):
                                      tip="이 날의 영상(고른 사진이 있으면 그 사진만) + 소견을 보고서로 인쇄", icon_size=20, min_width=56)
         self.btn_pdf = tool_button("PDF", "file-pdf", "ToolBtn",
                                    tip="이 날의 영상(고른 사진이 있으면 그 사진만) + 소견을 PDF 보고서로 저장", icon_size=20, min_width=56)
+        self.btn_delete_day = tool_button("날짜 삭제", "trash", "ToolBtn",
+                                          tip="이 날 촬영한 사진 · 동영상을 모두 삭제 (소견은 남김)", icon_size=20, min_width=60,
+                                          color=ICON_RECORD)
         self.btn_select_all.clicked.connect(lambda: self.toggle_select_all())
         self.btn_save_sel.clicked.connect(lambda: self.save_selected())
         self.btn_pro.clicked.connect(lambda: self.openInPro.emit())
         self.btn_print.clicked.connect(lambda: self.print_day())
         self.btn_pdf.clicked.connect(lambda: self.export_pdf_dialog())
+        self.btn_delete_day.clicked.connect(self._request_delete_day)
         # 버튼 묶음: 좁은 창에서는 아이콘만 (이름은 풍선 도움말), 그래도 좁으면 옆으로 밀어 보기 — 글자 · 아이콘 겹침 방지
-        self._head_buttons = (self.btn_select_all, self.btn_save_sel, self.btn_pro, self.btn_print, self.btn_pdf)
+        self._head_buttons = (self.btn_select_all, self.btn_save_sel, self.btn_pro, self.btn_print, self.btn_pdf,
+                              self.btn_delete_day)
         row = QWidget()
         row.setObjectName("ExamButtons")
         rl_ = QHBoxLayout(row)
@@ -319,6 +325,10 @@ class ExamScreen(QWidget):
 
     def day_captures(self) -> list:
         return [c for c in self._caps if self._day and (c.captured_at or "")[:10] == self._day]
+
+    def _request_delete_day(self) -> None:
+        if self._day and self.day_captures():
+            self.deleteDay.emit(self._day)
 
     def flush(self) -> None:
         """바뀐 소견이 있으면 저장 (화면·환자·날짜 전환 전에 부른다)."""

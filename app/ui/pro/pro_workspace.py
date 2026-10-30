@@ -19,6 +19,7 @@
 기타
   보정본 저장  보정·주석을 반영한 새 영상으로 저장(원본 보존, 코멘트 '보정본'/'주석')
   코멘트       영상별 코멘트 편집      환자정보  진단명·담당의 등 편집
+  삭제         MULTI에서 선택한 영상(최대 2장) / 1화면의 현재 영상을 DB·디스크에서 삭제 (Delete 키)
   인쇄 / PDF   머리말·환자정보·진단명·꼬리말이 포함된 A4 보고서
   분석         영상 품질·형광염색·결막 충혈·마이봄샘·수정체 지수, 이전 영상 자동 정렬,
                가장 선명한 영상 찾기, TBUT(동영상), DICOM 내보내기 (analysis_panel.py)
@@ -84,7 +85,7 @@ from app.ui.pro.image_canvas import ImageCanvas
 from app.ui.pro.multi_analysis import MultiAnalysisPanel
 from app.ui.pro.multi_grid import MultiGrid
 from app.ui.pro.smart_panel import PEAKING_COLORS, AnalysisTab, SmartTab
-from app.ui.theme import ICON, ICON_ACCENT, ICON_ON_ACCENT
+from app.ui.theme import ICON, ICON_ACCENT, ICON_ON_ACCENT, ICON_RECORD
 
 try:
     import cv2
@@ -312,7 +313,11 @@ class ProWorkspace(QWidget):
 
         self.b_comment = self._btn("코멘트", "현재 영상 코멘트 편집", obj="ProGhost", icon="comment")
         self.b_patient = self._btn("환자정보", "진단명·담당의 등 환자 정보 편집", obj="ProGhost", icon="user")
-        for b in (self.b_comment, self.b_patient):
+        self.b_delete = self._btn("삭제",
+                                  "선택한 영상 삭제 (Delete) — "
+                                  "MULTI: 선택한 영상, 1화면: 현재 영상",
+                                  obj="ProDanger", icon="trash", color=ICON_RECORD)
+        for b in (self.b_comment, self.b_patient, self.b_delete):
             tl.addWidget(b)
         tl.addStretch(1)
         self.b_print = self._btn("인쇄", "현재 화면 영상 보고서 인쇄", obj="ProPrimary", icon="printer",
@@ -347,8 +352,24 @@ class ProWorkspace(QWidget):
         if self.embedded:                           # 쓰지 않는 비교 화면(캔버스 2개)이 창 최소 폭을 키우지 않게
             self.stack.setMinimumSize(self.grid_view.minimumSize())
         body.addWidget(self.stack, 1)
-        body.addWidget(self._build_side())
+        self.side = self._build_side()
+        self.side_toggle = None
+        if self.embedded:
+            # 멀티: 오른쪽 메뉴(보정 · 편집 · 분석)는 가는 손잡이로 접고 편다 — 기본은 접힘 (config.multi_side_visible)
+            self.side_toggle = QToolButton()
+            self.side_toggle.setObjectName("ProSideToggle")
+            self.side_toggle.setCheckable(True)
+            self.side_toggle.setFixedWidth(22)
+            self.side_toggle.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+            self.side_toggle.setIconSize(QSize(14, 14))
+            self.side_toggle.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            self.side_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.side_toggle.clicked.connect(lambda on: self.set_side_visible(on))
+            body.addWidget(self.side_toggle)
+        body.addWidget(self.side)
         root.addLayout(body, 1)
+        if self.embedded:
+            self.set_side_visible(bool(getattr(self.config, "multi_side_visible", False)), save=False)
 
         self.info = QLabel()
         self.info.setObjectName("ProInfo")
@@ -366,6 +387,7 @@ class ProWorkspace(QWidget):
         self.b_edit_save.clicked.connect(self.save_edited)
         self.b_comment.clicked.connect(self.edit_comment)
         self.b_patient.clicked.connect(self.edit_patient)
+        self.b_delete.clicked.connect(self.delete_selected)
         self.b_print.clicked.connect(self.print_current)
         self.b_pdf.clicked.connect(self._pdf_dialog)
         self.multi.openRequested.connect(self.open_index)
@@ -719,7 +741,8 @@ class ProWorkspace(QWidget):
             keys += [(QKeySequence(Qt.Key.Key_Escape), lambda: self.set_tool(self._default_tool())),
                      (QKeySequence(Qt.Key.Key_Left), lambda: self.step(-1)),
                      (QKeySequence(Qt.Key.Key_Right), lambda: self.step(1)),
-                     (QKeySequence(Qt.Key.Key_Space), self._space)]
+                     (QKeySequence(Qt.Key.Key_Space), self._space),
+                     (QKeySequence(Qt.Key.Key_Delete), self.delete_selected)]
         for key, fn in keys:
             sc = QShortcut(key, self)
             sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
@@ -764,6 +787,25 @@ class ProWorkspace(QWidget):
 
     def mode(self) -> str:
         return self._mode
+
+    def set_side_visible(self, on: bool, save: bool = True) -> None:
+        """멀티(embedded) 오른쪽 메뉴 보이기 / 접기. 접어도 보정 값 · 편집은 그대로다."""
+        if not self.embedded or self.side_toggle is None:
+            return
+        on = bool(on)
+        self.side.setVisible(on)
+        self.side_toggle.setChecked(on)
+        self.side_toggle.setIcon(icons.icon("chev-r" if on else "chev-l", ICON, 14))
+        self.side_toggle.setToolTip("보정 · 편집 · 분석 메뉴 접기" if on else "보정 · 편집 · 분석 메뉴 펴기")
+        if save and getattr(self.config, "multi_side_visible", None) != on:
+            self.config.multi_side_visible = on
+            try:
+                self.config.save()
+            except Exception:  # noqa: BLE001
+                log.warning("multi_side_visible save failed", exc_info=True)
+
+    def side_visible(self) -> bool:
+        return self.side.isVisibleTo(self) if self.embedded else True
 
     def current_capture(self):
         """지금 보고 있는 환자 사진 (1화면 · 멀티의 누른 칸). 참조 사진 · 그 밖의 화면은 None."""
@@ -816,6 +858,7 @@ class ProWorkspace(QWidget):
         for b in (self.b_clear, self.b_edit_save):
             b.setEnabled(ann)
         self.b_comment.setEnabled(mode == "single")
+        self._refresh_delete_state()
         if mode == "compare":
             self._cmp_active = self.cmp_left
         if mode == "single":
@@ -840,6 +883,7 @@ class ProWorkspace(QWidget):
         if not (0 <= self._idx < len(self._caps)):
             self.single_canvas.set_image(None)
             self._update_side()
+            self._refresh_delete_state()
             return
         cap = self._caps[self._idx]
         self.single_canvas.set_image(load_bgr(cap.file_path))
@@ -854,7 +898,12 @@ class ProWorkspace(QWidget):
         self._update_trend()
         self._update_side()
         self._refresh_edit_state()
+        self._refresh_delete_state()
         self._analysis_view_changed()
+
+    def _refresh_delete_state(self) -> None:
+        if hasattr(self, "b_delete"):
+            self.b_delete.setEnabled(bool(self.delete_targets()))
 
     def _analysis_view_changed(self) -> None:
         if hasattr(self, "advanced_analysis"):
@@ -939,9 +988,54 @@ class ProWorkspace(QWidget):
 
     def _on_selection(self, sel: list) -> None:
         self.lbl_sel.setText(
-            f"선택 {len(sel)}/2 — 2장이면 '비교'를 누르세요." if sel
+            f"선택 {len(sel)}/2 — 2장이면 '비교', 지우려면 '삭제'(Delete)." if sel
             else "MULTI에서 영상 2장을 클릭해 선택한 뒤 '비교'를 누르세요.")
         self._update_side()
+        self._refresh_delete_state()
+
+    # ================= 삭제 =================
+    def delete_targets(self) -> list:
+        """지금 '삭제'를 누르면 지워질 영상 — MULTI: 선택한 영상, 1화면: 현재 영상."""
+        if self._mode == "multi":
+            n = len(self._caps)
+            return [self._caps[i] for i in sorted(self.multi.selection()) if 0 <= i < n]
+        if self._mode == "single" and 0 <= self._idx < len(self._caps):
+            return [self._caps[self._idx]]
+        return []
+
+    def delete_selected(self, confirm: bool = True) -> int:
+        """선택한 영상을 DB·디스크에서 삭제한다. 지워진 장수를 돌려준다."""
+        targets = self.delete_targets()
+        if not targets:
+            if self.isVisible():
+                QMessageBox.information(
+                    self, "영상 삭제",
+                    "삭제할 영상이 없습니다.\n"
+                    "MULTI에서 영상을 클릭해 선택하거나, 1화면에서 영상을 열어 주세요.")
+            return 0
+        if confirm:
+            n = len(targets)
+            desc = caption_of(targets[0]) if n == 1 else f"{n}장"
+            ret = QMessageBox.question(
+                self, "영상 삭제",
+                f"선택한 영상 {desc}을(를) 삭제하시겠습니까?\n\n"
+                "DB 기록과 저장된 파일(썸네일 포함)이 함께 지워지며 되돌릴 수 없습니다.\n"
+                "(지정 폴더에 복사된 사본은 남겨 둡니다)",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No)
+            if ret != QMessageBox.StandardButton.Yes:
+                return 0
+        try:
+            deleted = self.service.delete_captures(targets)
+        except Exception as e:  # noqa: BLE001
+            log.exception("Pro delete failed")
+            QMessageBox.warning(self, "삭제 실패", f"영상을 삭제하지 못했습니다.\n{e}")
+            deleted = 0
+        self.multi.clear_selection()
+        # 1화면: 같은 자리(다음 영상)를, 끝이었다면 마지막 영상을 표시
+        self.reload(select_last=False)
+        self.savedCapture.emit()                # 기본 화면 썸네일 갱신
+        return deleted
 
     # ================= 비교 =================
     def _prepare_compare(self) -> bool:

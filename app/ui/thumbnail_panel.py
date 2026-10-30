@@ -2,7 +2,8 @@
 
 한 번 클릭 = 선택(번호 표시, 다시 누르면 해제) · 두 번 클릭 = 큰 화면으로 보기(thumbnailClicked).
 선택한 사진은 제목 줄 오른쪽(OD · OS 위)의 '멀티' 로 한 번에 모아 보고 편집한다.
-오른쪽 클릭 = '멀티' (그 사진을 안 골랐으면 골라서, multiRequested)."""
+오른쪽 클릭 = '멀티' (그 사진을 안 골랐으면 골라서, multiRequested).
+촬영일 제목 줄 오른쪽의 쓰레기통 = 그 날 촬영한 사진 모두 삭제 요청(dayDeleteRequested, 실제 삭제는 메인 창)."""
 from __future__ import annotations
 
 import time
@@ -22,7 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.ui import icons
-from app.ui.theme import ICON_ACCENT
+from app.ui.theme import ICON_ACCENT, ICON_RECORD
 from app.ui.thumbnail_widget import ThumbnailWidget
 
 _DOW = "월화수목금토일"
@@ -42,6 +43,7 @@ class ThumbnailPanel(QFrame):
     thumbnailClicked = Signal(object)  # Capture — 두 번 클릭: 큰 화면으로 보기
     selectionChanged = Signal(list)    # 선택한 Capture 목록 (선택 순서)
     multiRequested = Signal(object)    # Capture — 오른쪽 클릭: (안 골랐으면 고르고) 멀티로 모아 보기
+    dayDeleteRequested = Signal(str)   # 'YYYY-MM-DD' — 촬영일 제목 줄의 삭제 버튼: 그 날 영상 모두 삭제
 
     def __init__(self, db, newest_on_top: bool = True, parent=None, split_eyes: bool = False):
         super().__init__(parent)
@@ -55,6 +57,7 @@ class ThumbnailPanel(QFrame):
         self._last_press: tuple | None = None   # (capture id, 시각) — 두 번 클릭 판별
         self._pre_click: tuple | None = None    # (capture id, 두 번 클릭 전 선택 목록)
         self._widgets: dict[int, ThumbnailWidget] = {}
+        self.day_delete_buttons: dict[str, QPushButton] = {}   # 촬영일 → 삭제 버튼 (테스트 · 자동화용)
 
         self.setObjectName("ThumbnailPanel")
         self.setFixedWidth(248)
@@ -234,8 +237,34 @@ class ThumbnailPanel(QFrame):
                 if f == "all" or (c.media_type == "video" if f == "video" else c.eye == f)]
 
     # ---- 내부 ----
+    def _day_header(self, day: str, count: int) -> QWidget:
+        """촬영일 제목 줄: 날짜 · (필터에 보이는) 장수 + 오른쪽 끝 '그 날 모두 삭제' 버튼.
+
+        삭제는 필터와 무관하게 그 날 전체가 대상이라 풍선 도움말에는 전체 장수를 쓴다."""
+        row = QWidget()
+        hl = QHBoxLayout(row)
+        hl.setContentsMargins(0, 0, 0, 0)
+        hl.setSpacing(4)
+        h = QLabel(f"{day_label(day)}   ·   {count}장")
+        h.setObjectName("DayHeader")
+        hl.addWidget(h, 1)
+        total = sum(1 for c in self._items if (c.captured_at or "")[:10] == day)
+        b = QPushButton()
+        b.setObjectName("DayDeleteBtn")
+        b.setIcon(icons.icon("trash", ICON_RECORD, 14))
+        b.setIconSize(QSize(13, 13))
+        b.setFixedSize(22, 22)
+        b.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        b.setCursor(Qt.CursorShape.PointingHandCursor)
+        b.setToolTip(f"{day_label(day)} 촬영 {total}장 모두 삭제 (필터와 무관하게 그 날 전체)")
+        b.clicked.connect(lambda _=False, d=day: self.dayDeleteRequested.emit(d))
+        self.day_delete_buttons[day] = b
+        hl.addWidget(b)
+        return row
+
     def _rebuild(self) -> None:
         self._widgets = {}
+        self.day_delete_buttons = {}
         while self._lay.count():
             w = self._lay.takeAt(0).widget()
             if w is not None and w is not self._empty:
@@ -264,8 +293,6 @@ class ThumbnailPanel(QFrame):
             d = (c.captured_at or "")[:10]
             if d != day:
                 day = d
-                h = QLabel(f"{day_label(d)}   ·   {per_day[d]}장")
-                h.setObjectName("DayHeader")
-                self._lay.addWidget(h)
+                self._lay.addWidget(self._day_header(d, per_day[d]))
             self._add_card(c)
         self._apply_ranks()

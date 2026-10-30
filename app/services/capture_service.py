@@ -194,6 +194,45 @@ class CaptureService:
         ref.id = self.db.references.insert(ref)
         return ref
 
+    # ---- 삭제 ----
+    def delete_capture(self, capture) -> bool:
+        """영상 한 건 삭제: DB 레코드와 기본 저장 파일·썸네일을 지운다.
+
+        지정 폴더(export)에 복사된 사본은 백업으로 남겨 둔다 (Explorer 의 삭제와 같은 규칙).
+        파일 삭제 실패(이미 없음·잠김)는 경고만 남기고 레코드 삭제는 그대로 둔다.
+        반환값은 레코드가 실제로 있었는지 여부.
+        """
+        cid = getattr(capture, "id", capture)
+        row = self.db.captures.delete(cid)
+        if row is None:
+            return False
+        for key in ("file_path", "thumbnail_path"):
+            path = row.get(key)
+            if not path:
+                continue
+            try:
+                Path(path).unlink(missing_ok=True)
+            except OSError:
+                log.warning("파일 삭제 실패 (%s): %s", key, path, exc_info=True)
+        log.info("capture deleted id=%s path=%s", cid, row.get("file_path"))
+        return True
+
+    def delete_captures(self, captures) -> int:
+        """여러 영상 삭제. 지워진 레코드 수를 돌려준다."""
+        return sum(1 for c in list(captures) if self.delete_capture(c))
+
+    def captures_on(self, patient_id: int, day: str) -> list:
+        """한 환자의 특정 촬영일('YYYY-MM-DD') 영상(사진 · 동영상) 목록, 촬영 순서."""
+        return [c for c in self.db.captures.list_by_patient(patient_id, order="asc")
+                if (c.captured_at or "")[:10] == day]
+
+    def delete_day(self, patient_id: int, day: str) -> int:
+        """그 날 촬영한 영상을 모두 삭제 (레코드 · 기본 저장 파일 · 썸네일, export 사본은 보존).
+
+        검사 소견(exam_notes)은 임상 기록이라 남겨 둔다. 지워진 장수를 돌려준다.
+        """
+        return self.delete_captures(self.captures_on(patient_id, day))
+
     def low_space_warning(self) -> Optional[str]:
         """시작 시 상태바에 보여줄 디스크 여유 공간 경고 (문제 없으면 None)."""
         free = free_space_mb(self.config.media_root)

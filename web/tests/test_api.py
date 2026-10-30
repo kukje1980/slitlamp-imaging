@@ -318,3 +318,24 @@ def test_reference_samples_library(client):
     assert client.delete(f"/api/v1/refs/{r2.json()['id']}").status_code == 204
     assert client.get(url).status_code == 404
     assert len(client.get("/api/v1/refs").json()) == 2
+
+
+def test_delete_capture_removes_media_file(client):
+    from app import config
+    p = _make_patient(client, chart="DEL2")
+    png = b"\x89PNG\r\n\x1a\n" + b"0" * 64
+    caps = []
+    for k in range(2):
+        r = client.post("/api/v1/captures",
+                        files={"file": (f"{k}.png", io.BytesIO(png), "image/png")},
+                        data={"patient_id": str(p["id"]), "media_type": "photo", "ext": "png"})
+        caps.append(r.json())
+    f0 = config.MEDIA_DIR / caps[0]["url"].removeprefix("/media/")
+    f1 = config.MEDIA_DIR / caps[1]["url"].removeprefix("/media/")
+    assert f0.exists() and f1.exists()
+    assert client.delete(f"/api/v1/captures/{caps[0]['id']}").status_code == 204
+    assert not f0.exists() and f1.exists()                 # 선택한 영상 파일만 삭제
+    left = client.get(f"/api/v1/captures?patient_id={p['id']}").json()
+    assert [c["id"] for c in left] == [caps[1]["id"]]
+    # 이미 지운 영상을 다시 지워도 오류 없음
+    assert client.delete(f"/api/v1/captures/{caps[0]['id']}").status_code == 204

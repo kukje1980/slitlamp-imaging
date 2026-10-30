@@ -2,7 +2,7 @@ name: Publish integrated release
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, claude/fervent-fermi-uplzuu]   # main 이 안저 뷰어로 바뀐 뒤 슬릿램프 배포 브랜치
 permissions:
   contents: write
 concurrency:

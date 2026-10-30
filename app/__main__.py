@@ -133,6 +133,9 @@ def main(argv=None) -> int:
     log.info("db ready: patients=%s captures=%s backup=%s",
              stats["patients"], stats["captures"], stats["backup"])
 
+    from app.services.sample_import import ensure_bundled_samples
+    ensure_bundled_samples(db, config)        # 설치판의 질환별 샘플 사진 — 처음 실행 때 한 번만 등록
+
     win = MainWindow(config, db)
     win.show()
     rc = app.exec()

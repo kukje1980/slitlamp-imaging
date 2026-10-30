@@ -51,6 +51,7 @@ datas += [("assets/icons/app.ico", "assets/icons"),
 datas += [("assets/brand", "assets/brand")]
 # 효과음 (캡처 찰칵 · 정지영상 · 녹화 삐)
 datas += [("assets/sounds", "assets/sounds")]
+datas += [("assets/samples", "assets/samples")]      # 질환별 샘플 사진 (원본 그대로 · 출처/이용 조건)
 # AI 에이전트 장면 모델 (있을 때만 — 없으면 규칙 기반)
 if os.path.isdir("assets/models") and os.listdir("assets/models"):
     datas += [("assets/models", "assets/models")]

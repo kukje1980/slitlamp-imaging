@@ -70,6 +70,8 @@ class SettingsDialog(QDialog):
         self.start_home.setChecked(getattr(config, "start_screen", "home") != "capture")
         self.smart_visible = QCheckBox("촬영 화면에 Smart 도구줄 보이기")
         self.smart_visible.setChecked(bool(getattr(config, "smart_bar_visible", True)))
+        self.view_after = QCheckBox("사진을 찍으면 큰 화면으로 바로 보기 ('다시 촬영' · 촬영 키 · USB 버튼으로 돌아오기)")
+        self.view_after.setChecked(bool(getattr(config, "view_after_capture", True)))
         self.split_count = QComboBox()
         for n in (2, 4, 6, 8, 16):
             self.split_count.addItem(f"{n}분할", n)
@@ -182,6 +184,7 @@ class SettingsDialog(QDialog):
         gform.addRow("화면 테마", self.theme)
         gform.addRow("시작 화면", self.start_home)
         gform.addRow("Smart 도구줄", self.smart_visible)
+        gform.addRow("촬영 후 보기", self.view_after)
         gform.addRow("사진 목록", self.split_eyes)
         gform.addRow("분할 화면", self.split_count)
         gform.addRow("", self.split_ask)
@@ -705,6 +708,7 @@ class SettingsDialog(QDialog):
         c.theme = self.theme.currentData() or "dark"
         c.start_screen = "home" if self.start_home.isChecked() else "capture"
         c.smart_bar_visible = self.smart_visible.isChecked()
+        c.view_after_capture = self.view_after.isChecked()
         c.thumbs_split_eyes = self.split_eyes.isChecked()
         c.split_count = int(self.split_count.currentData() or 4)
         c.split_count_saved = not self.split_ask.isChecked()

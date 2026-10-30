@@ -165,3 +165,17 @@ def test_main_window_button(app_env, tmp_path, monkeypatch):
         assert "샘플 · 건성안 (SAMPLE-01)" in items
     finally:
         w.close()
+
+
+def test_bundled_samples_registered_once(app_env):
+    from app.services.sample_import import BUNDLE_ID, bundled_samples_dir, ensure_bundled_samples
+    config, db = app_env
+    src = bundled_samples_dir()
+    assert src is not None and (src / "metadata.json").is_file()
+    r = ensure_bundled_samples(db, config)
+    assert r is not None and r.photos_imported == 26 and not r.mismatched and not r.failed
+    assert config.bundled_samples == BUNDLE_ID
+    charts = sorted(p.chart_no for p in db.patients.list_all() if p.chart_no.startswith("SAMPLE-"))
+    assert charts == [f"SAMPLE-{i:02d}" for i in range(11)]
+    # 두 번째 실행부터는 다시 등록하지 않음 (사용자가 지운 샘플도 되살리지 않음)
+    assert ensure_bundled_samples(db, config) is None

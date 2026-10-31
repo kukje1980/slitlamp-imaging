@@ -194,6 +194,19 @@ def _read_info(folder: Path) -> dict | None:
     return data if isinstance(data, dict) and data.get("set_id") else None
 
 
+def _replace(tmp: Path, dst: Path, tries: int = 10) -> None:
+    """os.replace — 윈도우에서 백신 검사 · 색인 · 열린 연결이 대상 파일을 잠깐 잡고 있으면 '접근 거부'(WinError 5)가
+    나므로, 조금씩 기다리며 다시 시도한다 (최대 약 2.75초). 다른 OS 와 다른 오류는 바로 올린다."""
+    for i in range(tries):
+        try:
+            os.replace(tmp, dst)
+            return
+        except PermissionError:
+            if os.name != "nt" or i == tries - 1:
+                raise
+            time.sleep(0.05 * (i + 1))
+
+
 def _anchor_missing(anchor) -> bool:
     return anchor is not None and not Path(anchor).is_file()
 
@@ -240,7 +253,7 @@ def _atomic_write(path: Path, data: bytes, anchor=None) -> None:
             os.fsync(f.fileno())
         if _anchor_missing(anchor):
             raise DriveMissing(f"백업 위치가 연결되어 있지 않습니다 (복사 중 빠짐): {Path(anchor).parent}")
-        os.replace(tmp, path)
+        _replace(tmp, path)
     except (OSError, DriveMissing) as e:
         try:
             tmp.unlink()
@@ -409,7 +422,7 @@ def copy_file(src, dst, min_free_mb: float = MIN_FREE_MB, cancel=None, anchor=No
         shutil.copystat(src, tmp)
         if _anchor_missing(anchor):
             raise DriveMissing(f"백업 위치가 연결되어 있지 않습니다 (복사 중 빠짐): {Path(anchor).parent}")
-        os.replace(tmp, dst)
+        _replace(tmp, dst)
     except BaseException as e:
         try:
             tmp.unlink()

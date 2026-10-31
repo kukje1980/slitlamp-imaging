@@ -6,7 +6,7 @@ import time
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QDialog, QLabel
+from PySide6.QtWidgets import QApplication, QDialog, QLabel, QPushButton
 
 from app.models.patient import Patient
 from app.ui.icon_button import IconTextButton
@@ -756,21 +756,27 @@ def test_right_click_menu_opens_multi(qapp, win):
 
 
 def test_image_viewer_has_magnifier(qapp, win):
+    """보기 창: 돋보기 · 이동 · 맞춤 도구 줄은 없고, 누르고 있으면 확대 렌즈 · 두 번 누르면 창에 맞춤."""
     caps = _photos(win, 1)
     from app.ui.image_viewer import ImageViewerDialog
     dlg = ImageViewerDialog(caps[0], win)
     dlg.show()
     qapp.processEvents()
     cv = dlg.canvas
-    assert cv.image() is not None and cv.tool() == "magnify" and dlg.tool_buttons["magnify"].isChecked()
+    assert cv.image() is not None and cv.tool() == "magnify"
+    assert not hasattr(dlg, "tool_buttons") and not hasattr(dlg, "b_fit")
+    texts = [b.text().strip() for b in dlg.findChildren(QPushButton)]
+    assert not any(t in ("돋보기", "이동", "맞춤") for t in texts)
     vp = cv.viewport()
     QTest.mousePress(vp, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, vp.rect().center())
     assert cv._lens is not None                                                    # 누르는 동안 확대 렌즈
     QTest.mouseRelease(vp, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, vp.rect().center())
     assert cv._lens is None
-    dlg.tool_buttons["pan"].click()
-    assert cv.tool() == "pan"
-    dlg.b_fit.click()
+    fitted = cv.transform().m11()
+    cv.zoom_by(2.0)                                                                # 휠 확대와 같음
+    assert cv.transform().m11() == pytest.approx(fitted * 2.0)
+    QTest.mouseDClick(vp, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, vp.rect().center())
+    assert cv.transform().m11() == pytest.approx(fitted)                           # 두 번 누르면 창에 맞춤
     dlg.close()
 
 

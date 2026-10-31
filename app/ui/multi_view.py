@@ -84,11 +84,19 @@ def _short(text: str, n: int = 30) -> str:
     return text if len(text) <= n else text[: n - 1] + "…"
 
 
-def _tag(i: int, cap) -> str:
+def eye_time(cap) -> str:
+    """사진 왼쪽 위 표시의 번호 뒤 부분 — 'OD  10-30 10:07' (참조 사진은 '참조 · 분류 · 제목').
+    멀티 칸과 큰 화면(보기 창)이 같은 표시를 쓴다."""
     if is_reference(cap):
-        return f"{i + 1}  참조 · {_short(cap.label)}"
+        return f"참조 · {_short(cap.label)}"
     eye = cap.eye if cap.eye in ("OD", "OS", "OU") else ""
-    return f"{i + 1}" + (f"  {eye}" if eye else "") + (f"  {cap.captured_at[5:16]}" if cap.captured_at else "")
+    when = (cap.captured_at or "")[5:16]
+    return "  ".join(x for x in (eye, when) if x)
+
+
+def _tag(i: int, cap) -> str:
+    rest = eye_time(cap)
+    return f"{i + 1}" + (f"  {rest}" if rest else "")
 
 
 class _Cell(QFrame):

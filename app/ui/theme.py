@@ -406,6 +406,11 @@ def build_qss(mode: str = "dark") -> str:
     QLabel#MultiEmpty {{ color: #8a94a6; background: transparent; }}
     QFrame#MultiCell {{ background: #000000; border: 2px solid transparent; border-radius: 6px; }}
     QFrame#MultiCell[active="true"] {{ border: 2px solid #facc15; }}
+    /* 보기 창 사진 양옆 ‹ › (app/ui/image_viewer.py) — 사진 높이 전체가 누르는 곳 */
+    QPushButton#ViewerNav {{ background: transparent; border: 1px solid transparent; border-radius: 10px; padding: 0px; min-height: 0px; }}
+    QPushButton#ViewerNav:hover {{ background: {c['panel2']}; border-color: {c['rule']}; }}
+    QPushButton#ViewerNav:pressed {{ background: {c['raised']}; border-color: {c['accent']}; }}
+    QPushButton#ViewerNav:disabled {{ background: transparent; border-color: transparent; }}
     QListWidget#RefStrip {{ background: transparent; border: none; }}
     QLabel#KeyProbe {{ border: 1px dashed {c['rule_strong']}; border-radius: 8px; padding: 8px; }}
     QLabel#KeyProbe:focus {{ border: 1px solid {c['accent']}; }}

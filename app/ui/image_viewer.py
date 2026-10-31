@@ -1,7 +1,10 @@
 """썸네일 · 멀티 칸을 두 번 누르면 뜨는 큰 보기. 동영상은 OS 기본 플레이어로 재생.
 
-사진은 Pro 검토와 같은 캔버스(ImageCanvas): 기본 도구는 돋보기 — 사진을 누르고 있는 동안 확대 렌즈,
-마우스 휠 = 확대 · 축소, '이동' 으로 바꾸면 끌어서 옮기기, '맞춤' = 창에 맞춤.
+사진은 Pro 검토와 같은 캔버스(ImageCanvas) 한 장. 돋보기 · 이동 · 맞춤 도구 줄은 없다 — 사진을 누르고 있는 동안
+확대 렌즈, 마우스 휠 = 확대 · 축소, 사진을 두 번 누르면 창에 맞춤.
+사진 왼쪽 위에는 멀티 칸과 같은 눈 · 촬영 시각 표시('OD  10-30 10:07').
+captures 로 사진 목록을 주면 사진 양옆 ‹ › 버튼(←/→ 키)으로 앞뒤 사진을 넘겨 본다 — 촬영 순서(왼쪽 = 이전,
+오른쪽 = 다음), 끝에서는 멈춤, 동영상은 건너뜀. 넘기면 ``capture`` 가 지금 보이는 사진으로 바뀌고 삭제 · 전송도 그 사진.
 
 하단 '삭제' 버튼(Delete)을 누르고 확인하면 대화상자가 ``ImageViewerDialog.Deleted`` 코드로 닫히고,
 실제 삭제(DB·파일)는 호출한 쪽(메인 창)이 수행한다.
@@ -19,19 +22,20 @@ import subprocess
 import sys
 
 import numpy as np
-from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtCore import QEvent, QSize, Qt, Signal
+from PySide6.QtGui import QIcon, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
-    QButtonGroup,
     QDialog,
     QHBoxLayout,
     QLabel,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
 )
 
 from app.ui import icons
+from app.ui.multi_view import eye_time
 from app.ui.pro.image_canvas import ImageCanvas
 from app.ui.theme import ICON, ICON_ON_ACCENT
 
@@ -68,15 +72,29 @@ class ImageViewerDialog(QDialog):
     dxClicked = Signal(str, str)  # 질환 아이콘 (source, 분류) — 메인 창이 이 사진과 그 질환 샘플을 멀티 화면에
 
     def __init__(self, capture, parent=None, allow_delete: bool = True, after_capture: bool = False,
-                 capture_keys=(), dx_categories=None, dx_preview=None):
+                 capture_keys=(), dx_categories=None, dx_preview=None, captures=None):
         super().__init__(parent)
         self.capture = capture
         self.after_capture = bool(after_capture)
         self.b_retake = None
         self.b_send = None
         self.b_send_delete = None
+        self.b_prev = None
+        self.b_next = None
+        self.lbl_pos = None
+        self.lbl_sent = None
         self.dx_bar = None
-        self.setWindowTitle((f"촬영한 사진 - {capture.captured_at}" if after_capture else f"보기 - {capture.captured_at}"))
+        self._viewport = None
+        self._sent: set = set()              # 이 창에서 보낸 사진 id ('✓ 보냄' 표시 — 넘겨 봐도 사진마다)
+        # ‹ › 로 넘길 사진 (사진만 — 동영상은 외부 플레이어라 건너뜀). 지금 사진이 목록에 없으면 넘기기 없음
+        photos = [c for c in (captures or ()) if getattr(c, "media_type", "photo") == "photo"]
+        idx = next((i for i, c in enumerate(photos) if c.id == capture.id), -1)
+        if idx >= 0 and capture.media_type == "photo":
+            photos[idx] = capture            # 받은 기록 그대로 (같은 사진의 다른 사본이 아니라)
+            self._seq, self._index = photos, idx
+        else:
+            self._seq, self._index = [capture], 0
+        self._update_title()
         self.resize(920, 720)
         lay = QVBoxLayout(self)
         self.canvas = None
@@ -109,50 +127,85 @@ class ImageViewerDialog(QDialog):
                 row.addStretch(1)
                 lay.addLayout(row)
 
-        bar = QHBoxLayout()
-        bar.setSpacing(4)
-        self.tool_buttons = {}
-        group = QButtonGroup(self)
-        for tool, text, icon, tip in (("magnify", "돋보기", "lens", "사진을 누르고 있는 동안 확대 렌즈 (휠: 확대 · 축소)"),
-                                      ("pan", "이동", "hand", "끌어서 옮기기 (휠: 확대 · 축소)")):
-            b = QPushButton(icons.gap(text))
-            b.setCheckable(True)
-            b.setToolTip(tip)
-            ic = icons.icon(icon, ICON, 16)
-            ic.addPixmap(icons.pixmap(icon, ICON_ON_ACCENT, 16), ic.Mode.Normal, ic.State.On)
-            b.setIcon(ic)
-            b.setIconSize(QSize(16, 16))
-            b.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-            b.clicked.connect(lambda _=False, t=tool: self.set_tool(t))
-            group.addButton(b)
-            bar.addWidget(b)
-            self.tool_buttons[tool] = b
-        self.b_fit = QPushButton(icons.gap("맞춤"))
-        self.b_fit.setIcon(icons.icon("fit", ICON, 16))
-        self.b_fit.setIconSize(QSize(16, 16))
-        self.b_fit.setToolTip("창에 맞춤")
-        self.b_fit.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        bar.addWidget(self.b_fit)
-        hint = QLabel("누르고 있으면 확대 렌즈 · 휠로 확대 · 축소"
-                      + ("   ·   '다시 촬영' 또는 촬영 키 · USB 버튼으로 촬영 화면으로" if self.after_capture else ""))
-        hint.setObjectName("Muted")
-        bar.addWidget(hint)
-        bar.addStretch(1)
-        lay.addLayout(bar)
-
+        # 사진 한 장 — 돋보기 · 이동 · 맞춤 도구 줄 없이: 누르고 있으면 확대 렌즈, 휠 = 확대 · 축소, 두 번 누르면 창에 맞춤
         self.canvas = ImageCanvas()
         self.canvas._placeholder = "이미지를 불러올 수 없습니다."
-        self.canvas.set_image(_load_bgr(capture.file_path))
-        lay.addWidget(self.canvas, 1)
-        self.b_fit.clicked.connect(self.canvas.reset_view)
-        self.set_tool("magnify")
+        self.canvas.set_tool("magnify")
+        self._viewport = self.canvas.viewport()
+        self._viewport.installEventFilter(self)
+        # 양옆 ‹ › = 이전 · 다음 사진 (←/→ 키도 같음). 넘길 사진이 없으면 숨김
+        self.b_prev = self._nav_button("chev-l", "이전 사진 (←)", -1)
+        self.b_next = self._nav_button("chev-r", "다음 사진 (→)", 1)
+        mid = QHBoxLayout()
+        mid.setSpacing(6)
+        mid.addWidget(self.b_prev)
+        mid.addWidget(self.canvas, 1)
+        mid.addWidget(self.b_next)
+        lay.addLayout(mid, 1)
+        for key, delta in ((Qt.Key.Key_Left, -1), (Qt.Key.Key_Right, 1)):
+            QShortcut(QKeySequence(key), self, activated=lambda d=delta: self.step(d))
         lay.addLayout(self._footer(allow_delete))
+        self._show_current()
 
-    def set_tool(self, tool: str) -> None:
-        if self.canvas is None:
-            return
-        self.canvas.set_tool(tool)
-        self.tool_buttons[tool].setChecked(True)
+    # ---- 사진 넘기기 ----
+    def _nav_button(self, icon: str, tip: str, delta: int) -> QPushButton:
+        b = QPushButton()
+        b.setObjectName("ViewerNav")
+        ic = icons.icon(icon, ICON, 34)
+        blank = QPixmap(68, 68)
+        blank.fill(Qt.GlobalColor.transparent)
+        ic.addPixmap(blank, QIcon.Mode.Disabled)          # 처음 · 마지막 사진에서는 화살표를 지운다 (자리는 그대로)
+        b.setIcon(ic)
+        b.setIconSize(QSize(34, 34))
+        b.setFixedWidth(56)
+        b.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)   # 사진 높이 전체 — 누르기 쉽게
+        b.setToolTip(tip)
+        b.setCursor(Qt.CursorShape.PointingHandCursor)
+        b.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        b.clicked.connect(lambda: self.step(delta))
+        return b
+
+    def photo_count(self) -> int:
+        return len(self._seq)
+
+    def current_index(self) -> int:
+        return self._index
+
+    def step(self, delta: int) -> bool:
+        """앞(-1) · 뒤(+1) 사진으로. 끝이면 그대로 (False)."""
+        i = self._index + delta
+        if self.canvas is None or not 0 <= i < len(self._seq):
+            return False
+        self._index = i
+        self.capture = self._seq[i]
+        self._show_current()
+        return True
+
+    def _show_current(self) -> None:
+        cap = self.capture
+        self.canvas.set_image(_load_bgr(cap.file_path))
+        self.canvas.reset_view()
+        self.canvas.set_caption(eye_time(cap))           # 멀티 칸과 같은 'OD  10-30 10:07'
+        self._update_title()
+        n = len(self._seq)
+        for b, ok in ((self.b_prev, self._index > 0), (self.b_next, self._index < n - 1)):
+            b.setVisible(n > 1)
+            b.setEnabled(ok)
+        if self.lbl_pos is not None:
+            self.lbl_pos.setVisible(n > 1)
+            self.lbl_pos.setText(f"{self._index + 1} / {n}")
+        if self.lbl_sent is not None:
+            self.lbl_sent.setText("✓ 보냄" if cap.id in self._sent else "")
+
+    def _update_title(self) -> None:
+        when = self.capture.captured_at
+        self.setWindowTitle(f"촬영한 사진 - {when}" if self.after_capture else f"보기 - {when}")
+
+    def eventFilter(self, obj, ev):  # noqa: N802
+        if ev.type() == QEvent.Type.MouseButtonDblClick and obj is self._viewport and self.canvas is not None:
+            self.canvas.reset_view()                     # 두 번 누르면 창에 맞춤 ('맞춤' 버튼 대신)
+            return True
+        return super().eventFilter(obj, ev)
 
     # ---- 하단: 삭제 · 닫기 ----
     def _footer(self, allow_delete: bool) -> QHBoxLayout:
@@ -169,6 +222,11 @@ class ImageViewerDialog(QDialog):
         b_close = QPushButton("닫기")
         b_close.clicked.connect(self.accept)
         foot.addWidget(self.b_delete)
+        foot.addStretch(1)
+        self.lbl_pos = QLabel("")                    # 넘겨 보는 사진의 순서 '3 / 12' (넘길 사진이 있을 때만)
+        self.lbl_pos.setObjectName("Muted")
+        self.lbl_pos.setVisible(False)
+        foot.addWidget(self.lbl_pos)
         foot.addStretch(1)
         if self.after_capture and self.capture.media_type != "video":
             # 촬영 직후 화면에서 바로 전송 (이 사진 1장 — 방법 · 형식은 설정 → 전송)
@@ -210,8 +268,9 @@ class ImageViewerDialog(QDialog):
         return foot
 
     def mark_sent(self) -> None:
-        """전송을 마쳤다는 표시 (같은 사진을 두 번 보내지 않게 눈으로 확인)."""
-        if getattr(self, "lbl_sent", None) is not None:
+        """지금 보이는 사진을 보냈다는 표시 (같은 사진을 두 번 보내지 않게 눈으로 확인 — 넘겨 봐도 사진마다 기억)."""
+        self._sent.add(self.capture.id)
+        if self.lbl_sent is not None:
             self.lbl_sent.setText("✓ 보냄")
 
     def _confirm_delete(self) -> None:

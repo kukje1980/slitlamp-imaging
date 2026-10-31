@@ -249,7 +249,8 @@ class MainWindow(QMainWindow):
 
         self.pro.savedCapture.connect(self._on_pro_saved)
         self.pro.patientUpdated.connect(self._on_pro_patient_updated)
-        self.exam_screen.openCapture.connect(self._on_thumbnail_clicked)
+        # 검사 기록에서 연 보기 창은 그 날 사진을 ‹ › 로 넘긴다
+        self.exam_screen.openCapture.connect(lambda c: self._on_thumbnail_clicked(c, self.exam_screen.day_captures()))
         self.exam_screen.editPatient.connect(lambda: self.patient_panel.edit_patient())
         self.exam_screen.deleteDay.connect(self._delete_day)
         self.home.action.connect(self._on_home_action)
@@ -1212,14 +1213,16 @@ class MainWindow(QMainWindow):
             log.warning("dx categories for viewer failed", exc_info=True)
             dx = None
         dlg = ImageViewerDialog(cap, self, after_capture=True, capture_keys=keys,
-                                dx_categories=dx, dx_preview=self._dx_preview_paths)
+                                dx_categories=dx, dx_preview=self._dx_preview_paths,
+                                captures=self._viewer_photos(cap))
         dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        # ‹ › 로 넘겨 볼 수 있어 전송 · 삭제 · 질환 비교는 그때 보이는 사진(dlg.capture)으로
         dlg.retakeRequested.connect(lambda d=dlg: self._retake_from_viewer(d))
-        dlg.sendRequested.connect(self._safe("보기 창 전송", lambda d=dlg, c=cap: self._send_from_viewer(d, c)))
+        dlg.sendRequested.connect(self._safe("보기 창 전송", lambda d=dlg: self._send_from_viewer(d, d.capture)))
         dlg.sendDeleteRequested.connect(self._safe("보기 창 전송(삭제)",
-                                                   lambda d=dlg, c=cap: self._send_from_viewer(d, c, delete=True)))
-        dlg.dxClicked.connect(lambda s, c, d=dlg, cp=cap: self._dx_from_viewer(d, cp, s, c))
-        dlg.finished.connect(lambda code, d=dlg, c=cap: self._on_capture_viewer_closed(d, c, code))
+                                                   lambda d=dlg: self._send_from_viewer(d, d.capture, delete=True)))
+        dlg.dxClicked.connect(lambda s, c, d=dlg: self._dx_from_viewer(d, d.capture, s, c))
+        dlg.finished.connect(lambda code, d=dlg: self._on_capture_viewer_closed(d, d.capture, code))
         self._capture_viewer = dlg
         dlg.showMaximized()
         dlg.raise_()
@@ -2279,9 +2282,20 @@ class MainWindow(QMainWindow):
             self._stop_recording()
         self.statusBar().showMessage(f"녹화 오류로 녹화를 멈췄습니다: {msg}", 10000)
 
-    def _on_thumbnail_clicked(self, capture) -> None:
-        if ImageViewerDialog(capture, self).exec() == ImageViewerDialog.Deleted:
-            self._delete_capture(capture)
+    def _on_thumbnail_clicked(self, capture, pool=None) -> None:
+        dlg = ImageViewerDialog(capture, self, captures=self._viewer_photos(capture, pool))
+        if dlg.exec() == ImageViewerDialog.Deleted:
+            self._delete_capture(dlg.capture)        # ‹ › 로 넘겼으면 지금 보이던 사진
+
+    def _viewer_photos(self, capture, pool=None) -> list:
+        """보기 창의 ‹ › · ←/→ 로 넘겨 볼 사진 — 촬영 순서(오래된 것 → 최근, Pro 와 같음), 사진만.
+        pool(검사 기록의 그 날 사진 등) → 오른쪽 목록에 보이는 사진(필터) → 환자 사진 전체 중 capture 가 든 첫 목록."""
+        panel = self.thumbnail_panel
+        for src in (pool, panel.visible_captures(), panel._items):
+            photos = [c for c in (src or ()) if c.media_type == "photo"]
+            if any(c.id == capture.id for c in photos):
+                return sorted(photos, key=lambda c: (c.captured_at or "", c.id or 0))
+        return [capture]
 
     def _delete_capture(self, capture) -> bool:
         """썸네일 보기에서 확인한 영상 한 건을 삭제하고 양쪽 화면 목록을 갱신한다."""

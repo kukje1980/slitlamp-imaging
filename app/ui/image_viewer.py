@@ -8,7 +8,7 @@
 
 after_capture=True: 사진을 찍은 직후 자동으로 뜨는 큰 화면. '다시 촬영'(Esc · Enter)을 누르면 닫히고 촬영 화면으로
 돌아간다. capture_keys 로 준 촬영 단축키를 누르면 retakeRequested 가 나가 메인 창이 창을 닫고 초기화(기본 —
-라이브 촬영 화면) 또는 바로 다시 찍는다 (설정 → 일반 '보기 · 멀티 화면에서 캡처', config.capture_in_view).
+라이브 촬영 화면) 또는 바로 다시 찍는다 (설정 → 촬영 → '큰 화면 · 멀티에서 촬영 버튼', config.capture_in_view).
 아래쪽 '전송' · '전송(삭제)' 를 누르면 sendRequested · sendDeleteRequested 가 나가 메인 창이 이 사진 1장을 보낸다
 (전송(삭제)는 모두 보냈을 때만 확인 후 이 PC 에서 지우고 창을 닫음).
 """
@@ -66,6 +66,7 @@ class ImageViewerDialog(QDialog):
     sendRequested = Signal()     # 촬영 뒤 보기 창의 '전송' — 이 사진 1장
     sendDeleteRequested = Signal()  # '전송(삭제)' — 보낸 뒤 이 PC 에서 삭제 (모두 보냈을 때만, 확인 후)
     dxClicked = Signal(str, str)  # 질환 아이콘 (source, 분류) — 메인 창이 이 사진과 그 질환 샘플을 멀티 화면에
+    dxPhotoClicked = Signal(str, str, int)  # 질환 아이콘 미리보기에서 사진 한 장 — 이 사진과 그 사진만 멀티 화면에
 
     def __init__(self, capture, parent=None, allow_delete: bool = True, after_capture: bool = False,
                  capture_keys=(), dx_categories=None, dx_preview=None):
@@ -99,6 +100,9 @@ class ImageViewerDialog(QDialog):
             self.dx_bar.preview_provider = dx_preview
             self.dx_bar.set_categories(samples, library)
             self.dx_bar.diseaseClicked.connect(self.dxClicked.emit)
+            self.dx_bar.photoClicked.connect(self.dxPhotoClicked.emit)
+            self.dx_bar.preview.hint.setText("사진을 누르면 방금 찍은 사진과 그 사진을 멀티 화면에 나란히\n"
+                                             "(아이콘을 누르면 앞의 4장을 한 번에)")
             if self.dx_bar.entries():
                 row = QHBoxLayout()
                 row.setSpacing(6)
@@ -200,7 +204,7 @@ class ImageViewerDialog(QDialog):
             self.b_retake.setIconSize(QSize(18, 18))
             self.b_retake.setMinimumHeight(40)
             self.b_retake.setToolTip("촬영 화면으로 돌아가기 (Enter · Esc) — 촬영 단축키 · USB 사진 버튼을 누르면 초기화 "
-                                     "(설정 → 일반 '보기 · 멀티 화면에서 캡처' 에서 '바로 촬영' 으로 바꿀 수 있음)")
+                                     "(설정 → 촬영 → '큰 화면 · 멀티에서 촬영 버튼' 에서 '바로 촬영' 으로 바꿀 수 있음)")
             self.b_retake.setDefault(True)
             self.b_retake.clicked.connect(self.accept)
             foot.addWidget(self.b_retake)

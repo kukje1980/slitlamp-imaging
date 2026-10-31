@@ -76,6 +76,9 @@ class AppConfig:
     backup_on_exit: bool = True              # 프로그램을 닫을 때 환자 기록 DB · 못 한 파일 마무리
     backup_set_id: str = ""                  # 이 PC 의 지금 백업 폴더 번호 (폴더 안 backup_info.json 의 set_id)
     backup_last_at: str = ""                 # 마지막으로 백업을 마친 시각 (표시용)
+    # 프로그램을 끌 때 촬영 사진 지우기 (설정 → 저장 · 삭제) — 끌 때 안내 창에서 '삭제하고 종료' 를 눌러야 지운다
+    delete_on_exit: bool = False
+    delete_on_exit_scope: str = "all"        # all(모든 환자 — 샘플 제외) | today(오늘 촬영) | session(이번에 켠 뒤 촬영)
     # 스마트 캡처 (Pro LIVE) — app/capture/smart_capture.py
     smart_auto_mode: str = "off"             # off | freeze(초점 맞으면 자동 정지) | save(자동 저장)
     smart_roi_frac: float = 0.5              # 초점 판정 관심 영역 (화면 중앙 비율 0.2~1.0)
@@ -169,6 +172,7 @@ class AppConfig:
             "video_quality": self.video_quality in ("normal", "high"),
             "right_click_action": self.right_click_action in ("menu", "multi"),
             "capture_in_view": self.capture_in_view in ("reset", "capture"),
+            "delete_on_exit_scope": self.delete_on_exit_scope in ("all", "today", "session"),
             "right_click_items": (isinstance(self.right_click_items, list) and bool(self.right_click_items)
                                   and all(x in ("send", "send_delete", "multi", "delete") for x in self.right_click_items)),
             "thumbnail_max_side": self.thumbnail_max_side >= 480,   # 예전 기본 120 은 흐려서 480 으로

@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
+    QProgressDialog,
     QPushButton,
     QSizePolicy,
     QStackedWidget,
@@ -57,8 +58,9 @@ from app.ui.exam_screen import ExamScreen
 from app.ui import split_menu
 from app.ui.fit import HScroll
 from app.ui.home_screen import HomeScreen
-from app.ui.multi_view import is_reference, ref_capture
+from app.ui.multi_view import is_reference, ref_capture, ref_key
 from app.ui.patient_list_screen import PatientListScreen
+from app.ui.dx_bar import PREVIEW_MAX as DX_PREVIEW_MAX
 from app.ui.dx_bar import DxBar
 from app.ui.image_viewer import ImageViewerDialog
 from app.ui.patient_panel import PatientPanel
@@ -89,6 +91,12 @@ class MainWindow(QMainWindow):
         self.config = config
         self.db = db
         self.service = CaptureService(db, config)
+        # 프로그램을 끌 때 사진 지우기의 '이번에 켠 뒤 촬영' 기준 — 이 id 보다 뒤에 기록된 영상
+        try:
+            self._session_first_id = db.captures.max_id()
+        except Exception:  # noqa: BLE001
+            log.warning("capture max id failed", exc_info=True)
+            self._session_first_id = None
         # 백업: 외장 하드 · 다른 드라이브로 저장 즉시(실시간) · 주기적 · 수동 (app/services/backup_service.py)
         self.backup = BackupManager(config, db, parent=self)
         self.service.on_saved.append(self.backup.notify_saved)
@@ -446,6 +454,8 @@ class MainWindow(QMainWindow):
         self.dx_bar = DxBar()
         self.dx_bar.diseaseClicked.connect(self._on_dx_clicked)
         self.dx_bar.preview_provider = self._dx_preview_paths       # 마우스를 올리면 그 질환 사진을 작게
+        self.dx_bar.chosen_provider = self._dx_preview_chosen       # 그중 멀티 화면에 놓인 사진 (✓)
+        self.dx_bar.photoClicked.connect(self._on_dx_photo_clicked)  # 미리보기에서 사진 한 장 넣기 · 빼기
         lay.addWidget(self.dx_bar)
         lay.addStretch(1)
 
@@ -732,7 +742,7 @@ class MainWindow(QMainWindow):
         closed_viewer = time.monotonic() - getattr(self, "_usb_viewer_closed_at", -1e9) < 2.0
         self._usb_viewer_closed_at = -1e9
         if action == "capture" and closed_viewer and self._capture_resets():
-            # 촬영 직후 큰 화면에서 USB 사진 버튼 = 초기화 (설정 → 일반 '보기 · 멀티 화면에서 캡처').
+            # 촬영 직후 큰 화면에서 USB 사진 버튼 = 초기화 (설정 → 촬영 → '큰 화면 · 멀티에서 촬영 버튼').
             # 창을 닫은 직후라 메인 창이 아직 활성화되지 않았을 수 있어(맥 · 윈도우) 화면 검사보다 먼저 한다
             self.events.log("usb_button", button=bid, action="reset")
             self._reset_capture_view("viewer")
@@ -755,7 +765,7 @@ class MainWindow(QMainWindow):
         cb = self.control_bar
         name = usb_buttons.button_label(bid)
         if action == "capture" and self._multi and self._capture_resets():
-            # 멀티 화면에서 USB 사진 버튼 = 초기화 (설정 → 일반 '보기 · 멀티 화면에서 캡처')
+            # 멀티 화면에서 USB 사진 버튼 = 초기화 (설정 → 촬영 → '큰 화면 · 멀티에서 촬영 버튼')
             self.events.log("usb_button", button=bid, action="reset")
             self._reset_capture_view("multi")
             self.statusBar().showMessage(f"USB {name}: 초기화 — 라이브 촬영 화면 (다시 누르면 촬영)", 3000)
@@ -1152,13 +1162,69 @@ class MainWindow(QMainWindow):
         self._topbar_full_w = 0                          # 질환 수가 바뀌면 상단바 폭을 다시 잰다
         QTimer.singleShot(0, self._fit_topbar)
 
-    def _dx_preview_paths(self, source: str, category: str) -> list:
-        """질환 아이콘 미리보기용 사진 파일 (썸네일 우선) — 샘플 질환 또는 등록한 참조 분류."""
+    def _dx_refs(self, source: str, category: str) -> list:
+        """질환 아이콘의 사진 (참조 선택 모델 ref_bar 의 그 분류와 같은 목록 · 같은 순서)."""
         if source == "sample":
             refs = sample_import.sample_references(self.db, category=category)
         else:
             refs = self.db.references.list(category=category)
-        return [r.thumbnail_path or r.file_path for r in refs[:8]]
+        return refs[:DX_PREVIEW_MAX]
+
+    def _dx_preview_paths(self, source: str, category: str) -> list:
+        """질환 아이콘 미리보기용 사진 파일 (썸네일 우선) — 샘플 질환 또는 등록한 참조 분류."""
+        return [r.thumbnail_path or r.file_path for r in self._dx_refs(source, category)]
+
+    def _dx_preview_chosen(self, source: str, category: str) -> list:
+        """미리보기 사진 중 지금 멀티 화면에 놓인 것의 순번 (✓ 표시)."""
+        keys = {ref_key(r) for r in self.ref_bar.selected_refs()}
+        return [i for i, r in enumerate(self._dx_refs(source, category)) if ref_key(r) in keys]
+
+    def _on_dx_photo_clicked(self, source: str, category: str, index: int) -> None:
+        log.info("버튼: 질환 참조 사진 %s/%s #%s", source, category, index)
+        try:
+            self._dx_toggle_photo(source, category, index)
+        except Exception as e:  # noqa: BLE001
+            log.exception("질환 참조 사진 실패")
+            QMessageBox.warning(self, "질환 참조", f"'{category}' 참조 사진을 놓는 중 문제가 생겼습니다.\n{e}")
+
+    def _dx_toggle_photo(self, source: str, category: str, index: int) -> bool:
+        """질환 아이콘 미리보기에서 사진 한 장을 누름 → 그 사진만 멀티 화면에 넣기 · 다시 누르면 빼기.
+
+        아이콘을 누를 때처럼 한 번에 한 질환 — 다른 질환 사진을 고르면 앞 질환 사진은 빠진다.
+        지금 환자 사진을 고르지 않았으면 가장 최근 사진을 같이 놓는다. 넣었으면 True.
+        """
+        key = (source, category)
+        refs = self._dx_refs(source, category)
+        if not 0 <= index < len(refs):
+            return False
+        if self._mode != "capture":
+            self.set_mode("capture")
+        if not self.ref_bar.show_category(source, category):
+            self.ref_bar.refresh()
+            if not self.ref_bar.show_category(source, category):
+                self.statusBar().showMessage(f"'{category}' 참조 사진이 없습니다", 4000)
+                return False
+        mine = {ref_key(r) for r in self.ref_bar.refs()}
+        chosen = [r for r in self.ref_bar.selected_refs() if ref_key(r) in mine]     # 이 질환에서 고른 것만 남김
+        target = ref_key(refs[index])
+        added = target not in {ref_key(r) for r in chosen}
+        if added:
+            chosen.append(next((r for r in self.ref_bar.refs() if ref_key(r) == target), refs[index]))
+        else:
+            chosen = [r for r in chosen if ref_key(r) != target]
+        p = self._current_patient
+        if chosen and p is not None and not self.thumbnail_panel.selected_captures():
+            latest = next((c for c in self.db.captures.list_by_patient(p.id, order="desc") if c.media_type == "photo"), None)
+            if latest is not None:
+                self.thumbnail_panel.toggle_selection(latest)
+        self.dx_bar.set_active(key if chosen else None)
+        self.ref_bar.choose(chosen)                       # → _on_refs_changed → 멀티 (다 빼면 질환 아이콘도 꺼짐)
+        if chosen:
+            self.statusBar().showMessage(
+                f"'{category}' 참조 사진 {len(chosen)}장을 멀티 화면에 놓았습니다  ·  미리보기에서 다시 누르면 빼기", 5000)
+        else:
+            self.statusBar().showMessage(f"'{category}' 참조 사진을 모두 뺐습니다", 3000)
+        return added
 
     def _on_dx_clicked(self, source: str, category: str) -> None:
         """질환 아이콘: 그 질환 사진(최대 DX_MAX_REFS 장)을 지금 환자 사진과 함께 멀티 화면으로.
@@ -1219,20 +1285,26 @@ class MainWindow(QMainWindow):
         dlg.sendDeleteRequested.connect(self._safe("보기 창 전송(삭제)",
                                                    lambda d=dlg, c=cap: self._send_from_viewer(d, c, delete=True)))
         dlg.dxClicked.connect(lambda s, c, d=dlg, cp=cap: self._dx_from_viewer(d, cp, s, c))
+        dlg.dxPhotoClicked.connect(lambda s, c, i, d=dlg, cp=cap: self._dx_from_viewer(d, cp, s, c, index=i))
         dlg.finished.connect(lambda code, d=dlg, c=cap: self._on_capture_viewer_closed(d, c, code))
         self._capture_viewer = dlg
         dlg.showMaximized()
         dlg.raise_()
         dlg.activateWindow()
 
-    def _dx_from_viewer(self, dlg, cap, source: str, category: str) -> None:
-        """촬영 뒤 보기 창의 질환 아이콘 → 창을 닫고 방금 찍은 사진과 그 질환 샘플을 멀티 화면에 나란히."""
+    def _dx_from_viewer(self, dlg, cap, source: str, category: str, index: int | None = None) -> None:
+        """촬영 뒤 보기 창의 질환 아이콘 → 창을 닫고 방금 찍은 사진과 그 질환 샘플을 멀티 화면에 나란히.
+        index: 미리보기에서 누른 사진 한 장 — 그 사진만 방금 찍은 사진 옆에."""
         dlg.accept()
         panel = self.thumbnail_panel
         if [c.id for c in panel.selected_captures()] != [cap.id]:
             panel.clear_selection()
             if any(c.id == cap.id for c in panel._items):
                 panel.toggle_selection(cap)
+        if index is not None:
+            self.ref_bar.clear_selection()           # 앞서 놓은 참조 사진은 빼고 누른 사진만
+            QTimer.singleShot(0, lambda: self._on_dx_photo_clicked(source, category, index))
+            return
         if self.dx_bar.active() == (source, category):
             self.dx_bar.set_active(None)             # 이미 켜진 질환이면 끄지 말고 다시 보이게
         QTimer.singleShot(0, lambda: self._on_dx_clicked(source, category))
@@ -1246,7 +1318,7 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, lambda: self._run_action("capture"))
 
     def _capture_resets(self) -> bool:
-        """촬영 직후 큰 화면 · 멀티 화면에서 캡처 = 초기화인가 (설정 → 일반 '보기 · 멀티 화면에서 캡처')."""
+        """촬영 직후 큰 화면 · 멀티 화면에서 캡처 = 초기화인가 (설정 → 촬영 → '큰 화면 · 멀티에서 촬영 버튼')."""
         return getattr(self.config, "capture_in_view", "reset") != "capture"
 
     def _reset_capture_view(self, where: str = "") -> None:
@@ -2574,7 +2646,101 @@ class MainWindow(QMainWindow):
         return True
 
     # ---- 종료 ----
+    _EXIT_SCOPE_TEXT = {"all": "이 PC 에 저장된 모든 환자의", "today": "오늘", "session": "이번에 프로그램을 켠 뒤"}
+
+    def _exit_delete_targets(self) -> list:
+        scope = getattr(self.config, "delete_on_exit_scope", "all")
+        if scope == "session" and self._session_first_id is None:
+            return []                                    # 켤 때 기준을 못 읽었으면 '이번에 켠 뒤' 는 가려낼 수 없음
+        return self.service.exit_cleanup_targets(scope, since_id=self._session_first_id or 0)
+
+    def _ask_delete_on_exit(self):
+        """설정 → 저장 · 삭제 → '프로그램을 끌 때 사진 지우기' 가 켜져 있으면 끄기 전에 묻는다.
+
+        True = 삭제하고 종료 · False = 지우지 않고 종료(설정이 꺼져 있거나 지울 사진이 없을 때도) · None = 취소(끄지 않음).
+        """
+        if self._closing or not getattr(self.config, "delete_on_exit", False):
+            return False
+        try:
+            caps = self._exit_delete_targets()
+        except Exception:  # noqa: BLE001
+            log.warning("exit delete targets failed", exc_info=True)
+            return False
+        recording = bool(self._recording or self._pending_video is not None)
+        if not caps and not recording:
+            return False
+        n_photo = sum(1 for c in caps if c.media_type != "video")
+        n_video = len(caps) - n_photo
+        what = " · ".join(x for x in (f"사진 {n_photo}장" if n_photo else "",
+                                      f"동영상 {n_video}개" if n_video else "") if x) or "사진"
+        scope = self._EXIT_SCOPE_TEXT.get(getattr(self.config, "delete_on_exit_scope", "all"), "")
+        text = f"프로그램을 끄기 전에 {scope} 촬영한 사진 · 동영상을 이 PC 에서 지울까요?  ({what})"
+        info = ("지운 사진은 되돌릴 수 없습니다. 환자 정보 · 검사 소견 · 샘플 사진 · 참조 영상 라이브러리는 남기고, "
+                "함께 저장할 폴더(export)에 복사된 사본과 외장 하드 백업도 지우지 않습니다.")
+        if recording:
+            info += "\n\n녹화 중인 동영상은 마무리해 저장한 뒤 함께 지웁니다."
+        info += "\n\n(이 안내는 설정 → 저장 · 삭제 → '프로그램을 끌 때 사진 지우기' 에서 끌 수 있습니다)"
+        choice = self._exit_delete_question(text, info)
+        return {"delete": True, "keep": False}.get(choice)
+
+    def _exit_delete_question(self, text: str, info: str) -> str:
+        """끌 때 안내 창: 'delete'(삭제하고 종료) · 'keep'(남기고 종료) · 'cancel'(돌아가기 · Esc)."""
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("프로그램 종료 — 촬영 사진 지우기")
+        box.setText(text)
+        box.setInformativeText(info)
+        b_delete = box.addButton("삭제하고 종료", QMessageBox.ButtonRole.DestructiveRole)
+        b_keep = box.addButton("남기고 종료", QMessageBox.ButtonRole.AcceptRole)
+        b_cancel = box.addButton("취소 (끄지 않음)", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(b_keep)                     # Enter 를 잘못 눌러도 지우지 않게
+        box.setEscapeButton(b_cancel)
+        box.exec()
+        clicked = box.clickedButton()
+        return "delete" if clicked is b_delete else "keep" if clicked is b_keep else "cancel"
+
+    def _delete_on_exit(self) -> int:
+        """끌 때 안내 창에서 '삭제하고 종료' 를 눌렀을 때: 녹화 마무리 · 백업 뒤에 지운다 (많으면 진행 창)."""
+        try:
+            caps = self._exit_delete_targets()
+        except Exception:  # noqa: BLE001
+            log.exception("exit delete targets failed")
+            return 0
+        if not caps:
+            return 0
+        dlg = None
+        if len(caps) > 30 and self.isVisible():
+            dlg = QProgressDialog("촬영 사진을 지우는 중입니다 …", "멈추기", 0, len(caps), self)
+            dlg.setWindowTitle("촬영 사진 지우기")
+            dlg.setMinimumDuration(0)
+            dlg.show()
+
+        def progress(done: int, total: int):
+            if dlg is None:
+                return True
+            if done % 10 == 0 or done == total:
+                dlg.setValue(done)
+                QApplication.processEvents()
+            return not dlg.wasCanceled()
+        try:
+            n = self.service.delete_for_exit(caps, on_progress=progress)
+        except Exception as e:  # noqa: BLE001
+            log.exception("delete on exit failed")
+            QMessageBox.warning(self, "촬영 사진 지우기", f"사진을 지우다 멈췄습니다: {e}")
+            n = 0
+        finally:
+            if dlg is not None:
+                dlg.close()
+                dlg.deleteLater()
+        log.info("delete on exit: %s / %s captures (scope=%s)", n, len(caps),
+                 getattr(self.config, "delete_on_exit_scope", "all"))
+        return n
+
     def closeEvent(self, event) -> None:  # noqa: N802
+        delete_photos = self._ask_delete_on_exit()
+        if delete_photos is None:                        # '취소' — 끄지 않고 그대로 쓴다
+            event.ignore()
+            return
         self._closing = True
         QApplication.instance().removeEventFilter(self.usb_filter)
         self.usb_raw.uninstall(QApplication.instance())
@@ -2597,6 +2763,8 @@ class MainWindow(QMainWindow):
             self.backup.finish_on_exit(self)              # 환자 기록 DB · 못 한 파일 마무리 (외장 하드가 있으면)
         except Exception:  # noqa: BLE001
             log.warning("backup on exit failed", exc_info=True)
+        if delete_photos:
+            self._delete_on_exit()                        # 녹화 마무리 · 백업을 마친 뒤에 지운다
         self.backup.stop()
         try:
             self.db.close()

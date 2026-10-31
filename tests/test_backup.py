@@ -349,7 +349,7 @@ def test_settings_backup_tab_values_and_validation(qapp, win, tmp_path, monkeypa
     monkeypatch.setattr(sd.QMessageBox, "warning", lambda *a, **k: warned.append(a[2]))
     dlg = SettingsDialog(win.config, win)
     tab = dlg.backup_tab
-    assert dlg.tabs.tabText(dlg.tabs.indexOf(tab)) == "백업" and tab.manager is win.backup
+    assert dlg.page_of(tab) == "백업" and tab.manager is win.backup
     assert tab.root() == win.config.backup_root and tab.chk_auto.isChecked() and tab.chk_exit.isChecked()
     from PySide6.QtWidgets import QLabel
     assert any("210908261028" in lb.text() for lb in tab.findChildren(QLabel))           # 이름 규칙 예시

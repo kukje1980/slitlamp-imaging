@@ -52,6 +52,18 @@ class CapturesDAO:
         with self._lock, self._c:
             self._c.execute("UPDATE captures SET exam_id=? WHERE id=?", (exam_id, cid))
 
+    def list_all(self) -> List[Capture]:
+        """모든 영상 기록, 기록 순서 (프로그램을 끌 때 사진 지우기용)."""
+        with self._lock:
+            rows = self._c.execute("SELECT * FROM captures ORDER BY id ASC").fetchall()
+        return [self._row(r) for r in rows]
+
+    def max_id(self) -> int:
+        """지금까지 기록된 가장 큰 영상 id (없으면 0) — 이번에 켠 뒤 찍은 영상을 가려내는 기준."""
+        with self._lock:
+            r = self._c.execute("SELECT MAX(id) FROM captures").fetchone()
+        return int(r[0] or 0)
+
     def summary_by_patient(self) -> dict:
         """{환자 id: (영상 수, 최근 촬영 시각)} — 환자 목록 화면용."""
         with self._lock:

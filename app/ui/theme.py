@@ -110,6 +110,8 @@ def build_qss(mode: str = "dark") -> str:
     QFrame#DxPreview {{ background: {c['panel']}; border: 1px solid {c['rule_strong']}; border-radius: 8px; }}
     QLabel#DxPreviewTitle {{ color: {c['ink']}; font-weight: 700; }}
     QLabel#DxPreviewPhoto {{ background: {c['bg']}; border: 1px solid {c['rule']}; border-radius: 4px; }}
+    QLabel#DxPreviewPhoto:hover {{ border: 1px solid {c['accent']}; }}
+    QLabel#DxPreviewPhoto[chosen="true"] {{ border: 2px solid #facc15; }}
     QPushButton#DxMenuBtn {{ background: transparent; border: 1px solid transparent; border-radius: 7px; padding: 4px 8px; min-height: 0px; color: {c['ink_soft']}; font-weight: 600; }}
     QPushButton#DxMenuBtn:hover {{ background: {c['panel2']}; border-color: {c['rule']}; color: {c['ink']}; }}
     QPushButton#DxMenuBtn::menu-indicator {{ width: 0px; }}
@@ -143,6 +145,26 @@ def build_qss(mode: str = "dark") -> str:
     QLabel#CountBadge {{ background: {c['accent_soft']}; color: {c['accent_hover'] if mode == 'dark' else c['accent']};
         border-radius: 9px; padding: 1px 8px; font-size: 11px; font-weight: 700; }}
     QLabel#ThumbTitle {{ font-weight: 700; font-size: 13px; }}
+
+    /* 설정 창: 왼쪽 메뉴 · 화면 제목 · 묶음 상자 · 항목 이름 · 설명 */
+    QListWidget#SettingsNav {{ background: {c['panel']}; border: none; border-right: 1px solid {c['rule']};
+        border-radius: 0px; padding: 8px 0px; }}
+    QListWidget#SettingsNav::item {{ padding: 7px 10px; margin: 1px 8px; border-radius: 7px; }}
+    QListWidget#SettingsNav::item:selected {{ background: {c['accent_soft']}; color: {c['ink']}; }}
+    QScrollArea#SettingsScroll, QWidget#SettingsPage {{ background: {c['bg']}; }}
+    QWidget#SettingsClear {{ background: transparent; }}
+    QLabel#SettingsTitle {{ font-size: 19px; font-weight: 700; padding-bottom: 2px; }}
+    QLabel#SettingsGroup {{ color: {c['ink_muted']}; font-size: 11px; font-weight: 700; letter-spacing: 1px; }}
+    QLabel#SettingsSubhead {{ color: {c['ink_muted']}; font-size: 11px; font-weight: 700; padding-top: 6px; }}
+    QFrame#SettingsCard {{ background: {c['panel']}; border: 1px solid {c['rule']}; border-radius: 10px; }}
+    QLabel#SettingsLabel {{ font-weight: 600; padding-top: 4px; }}
+    QLabel#SettingsDesc {{ color: {c['ink_soft']}; font-size: 12px; }}
+    QLabel#SettingsWarn {{ color: {'#ffb454' if mode == 'dark' else '#b45309'}; font-size: 12px; }}
+    QLabel#SettingsPath {{ color: {c['ink_soft']}; font-family: Menlo, Consolas, "JetBrains Mono", monospace; font-size: 12px; }}
+    QPushButton#SettingsLink {{ background: transparent; border: 1px solid transparent; border-radius: 7px;
+        padding: 6px 10px; text-align: left; color: {c['ink']}; font-weight: 500; }}
+    QPushButton#SettingsLink:hover {{ background: {c['panel2']}; border-color: {c['rule_strong']};
+        color: {c['accent_hover'] if mode == 'dark' else c['accent']}; }}
     QLabel#DayHeader {{ color: {c['ink_muted']}; font-size: 11px; font-weight: 700; padding: 6px 2px 0; }}
     QPushButton#DayDeleteBtn {{ background: transparent; border: 1px solid transparent; border-radius: 6px;
                                padding: 0; margin-top: 4px; }}

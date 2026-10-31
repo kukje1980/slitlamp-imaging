@@ -48,7 +48,7 @@ def test_settings_dialog_has_specs_tab(qtbot, app_env):
     dlg = SettingsDialog(config)
     qtbot.addWidget(dlg)
     names = [dlg.tabs.tabText(i) for i in range(dlg.tabs.count())]
-    assert names[:3] == ["일반", "카메라 · 저장", "전송"] and names[-1] == "컴퓨터 사양"
+    assert names[:3] == ["설정 안내", "화면 · 소리", "촬영"] and names[-1] == "컴퓨터 사양"
     text = dlg.specs_label.text()
     assert "권장 사양" in text and "고화질" in text and "이 PC" in text
     dlg.show_tab("컴퓨터 사양")

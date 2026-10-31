@@ -22,7 +22,7 @@ def test_camera_list_by_name_and_missing_hint(qapp, app_env, monkeypatch):
     items = [dlg.camera_index.itemText(i) for i in range(dlg.camera_index.count())]
     assert items == ["0: Camera Sensor Front", "1: ★ ZV-E10M2"]
     dlg.camera_index.setCurrentIndex(1)
-    dlg.source_mode.setCurrentText("device")
+    dlg.source_mode.setCurrentIndex(dlg.source_mode.findData("device"))
     dlg.apply_to_config()
     assert (config.source_mode, config.camera_index, config.camera_name) == ("device", 1, "ZV-E10M2")
 
@@ -55,6 +55,6 @@ def test_picking_camera_switches_to_device_mode(qapp, app_env, monkeypatch):
     dlg = sd.SettingsDialog(config)
     dlg.camera_index.setCurrentIndex(1)
     dlg.camera_index.activated.emit(1)                # 사용자가 목록에서 고름
-    assert dlg.source_mode.currentText() == "device"
+    assert dlg.source_mode.currentData() == "device"
     dlg.apply_to_config()
     assert (config.source_mode, config.camera_name) == ("device", "ZV-E10M2")

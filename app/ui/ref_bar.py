@@ -214,7 +214,10 @@ class RefBar(QFrame):
 
     def choose_only_current(self, limit: int | None = None) -> list:
         """지금 보이는 분류의 사진만 고른다 (다른 분류에서 고른 것은 뺌). limit 장까지. 고른 목록을 돌려준다."""
-        refs = self._refs[:limit] if limit else list(self._refs)
+        return self.choose(self._refs[:limit] if limit else list(self._refs))
+
+    def choose(self, refs: list) -> list:
+        """고른 참조 사진을 refs 로 바꾼다 (이 순서대로 · 나머지는 뺌). 고른 목록을 돌려준다."""
         self._chosen = {ref_key(r): r for r in refs}
         self.list.blockSignals(True)
         for i, r in enumerate(self._refs):

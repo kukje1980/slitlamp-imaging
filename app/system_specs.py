@@ -172,7 +172,7 @@ def html(info: Optional[dict] = None) -> str:
     parts.append("<p><b>최소</b>: 1080p 촬영·녹화(일반 화질)가 끊기지 않는 선 &nbsp;·&nbsp; "
                  "<b>권장</b>: 4K 촬영·고화질 녹화까지 여유 있게 — 이 이상이면 편하게 쓸 수 있습니다.</p>")
     parts.append(table(["항목", "최소 사양", "권장 사양"], SPEC_ROWS))
-    parts.append("<h3>동영상 화질 모드 (설정 → 카메라 · 저장 → 동영상 화질)</h3>")
+    parts.append("<h3>동영상 화질 모드 (설정 → 저장 · 삭제 → 동영상 화질)</h3>")
     parts.append(table(["모드", "쓰는 때", "화질", "파일 크기 1080p", "파일 크기 4K", "필요한 PC"], VIDEO_MODE_ROWS))
     parts.append("<p>웹 버전(브라우저 녹화)은 비트레이트를 고정해 파일 크기가 일정합니다.</p>")
     parts.append(table(["모드", "1080p", "4K"], WEB_VIDEO_ROWS))

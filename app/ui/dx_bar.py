@@ -6,13 +6,15 @@
 질환 목록은 DB 의 샘플 환자(질환별, app/services/sample_import.py)와 등록한 참조 분류에서 만든다.
 아이콘 아래에 짧은 질환 이름(정상 · 건성안 · 백내장 …)이 보이고, 마우스를 올리면 아이콘 아래에 그 질환의
 사진이 작게(최대 PREVIEW_MAX 장) 뜬다 (DxPreview — 사진 목록은 메인 창이 preview_provider 로 준다).
+마우스를 미리보기 창으로 옮겨도 닫히지 않고, 사진을 누르면 그 사진만 멀티 화면에 넣거나 뺀다 (photoClicked —
+고른 사진은 노란 테두리 · ✓, 무엇을 골랐는지는 메인 창이 chosen_provider 로 알려 준다).
 창이 좁을 때(상단 메뉴가 아이콘만 남는 compact)는 한 개의 '질환 ▾' 버튼(메뉴)으로 줄어든다.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QObject, QPoint, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QAction, QGuiApplication, QPixmap
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QMenu, QPushButton, QToolButton, QVBoxLayout
+from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QAction, QColor, QGuiApplication, QPainter, QPen, QPixmap
+from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QMenu, QPushButton, QToolButton, QVBoxLayout
 
 from app.ui import icons
 from app.ui.theme import ICON, ICON_ACCENT
@@ -39,9 +41,13 @@ _SHORT_BY_ICON = {
 LABEL_MAX = 4                         # 아이콘 아래 이름은 이 글자 수까지 (버튼 폭 46px · 10px 글자 — 넘으면 짧은 이름 · …)
 BTN_LABELED = QSize(46, 42)           # 아이콘 + 아래 이름
 BTN_ICON = QSize(30, 30)              # 창이 조금 좁을 때: 아이콘만 (이름은 마우스를 올리면 미리보기에)
-PREVIEW_MAX = 4                       # 마우스를 올렸을 때 보여 줄 사진 수
+PREVIEW_MAX = 8                       # 마우스를 올렸을 때 보여 줄 사진 수 (한 줄에 PREVIEW_COLS 장)
+PREVIEW_COLS = 4
 PREVIEW_THUMB = QSize(120, 90)        # 미리보기 사진 한 장 크기
 PREVIEW_DELAY_MS = 200                # 지나가기만 할 때 깜빡이지 않게 잠깐 머물면 띄운다
+PREVIEW_HIDE_MS = 350                 # 아이콘에서 마우스를 떼도 미리보기 창으로 옮겨 갈 동안은 띄워 둔다
+CHOSEN_COLOR = "#facc15"              # 고른 사진 테두리 · ✓ (참조 줄 · 사진 목록의 고름 표시와 같은 노랑)
+HINT_CHOOSE = "사진을 누르면 그 사진만 멀티 화면에 넣기 · 다시 누르면 빼기\n(아이콘을 누르면 앞의 4장을 한 번에)"
 
 
 def short_label(name: str, source: str = "sample") -> str:
@@ -64,11 +70,67 @@ def icon_for(name: str) -> str:
     return "image"
 
 
+class _PreviewPhoto(QLabel):
+    """미리보기 사진 한 장 — 누르면 clicked(원래 순번). 고른 사진은 노란 테두리 + 오른쪽 위 ✓."""
+
+    clicked = Signal(int)
+
+    def __init__(self, index: int, pixmap: QPixmap):
+        super().__init__()
+        self.index = index
+        self.chosen = False
+        self.setObjectName("DxPreviewPhoto")
+        self.setFixedSize(PREVIEW_THUMB)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setPixmap(pixmap)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def set_chosen(self, on: bool) -> None:
+        on = bool(on)
+        if on == self.chosen:
+            return
+        self.chosen = on
+        self.setProperty("chosen", "true" if on else "false")
+        self.setToolTip("멀티 화면에 놓임 — 누르면 빼기" if on else "누르면 멀티 화면에 넣기")
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.update()
+
+    def mouseReleaseEvent(self, e) -> None:  # noqa: N802
+        if e.button() == Qt.MouseButton.LeftButton and self.rect().contains(e.position().toPoint()):
+            self.clicked.emit(self.index)
+        super().mouseReleaseEvent(e)
+
+    def paintEvent(self, e) -> None:  # noqa: N802
+        super().paintEvent(e)
+        if not self.chosen:
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        r = 9.0
+        c = QPointF(self.width() - r - 4, r + 4)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(CHOSEN_COLOR))
+        p.drawEllipse(c, r, r)
+        pen = QPen(QColor("#1a1a1a"), 2.2)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        p.setPen(pen)
+        p.drawPolyline([c + QPointF(-4.5, 0.2), c + QPointF(-1.2, 3.4), c + QPointF(4.6, -3.2)])
+        p.end()
+
+
 class DxPreview(QFrame):
-    """질환 아이콘 아래에 뜨는 작은 사진 미리보기 (툴팁처럼 떠 있는 창 — 누르거나 마우스를 떼면 사라짐)."""
+    """질환 아이콘 아래에 뜨는 작은 사진 미리보기 (떠 있는 창). 마우스를 이 창으로 옮겨도 닫히지 않고,
+    사진을 누르면 photoClicked(원래 순번) — 아이콘 · 이 창 밖으로 마우스를 떼면 잠시 뒤 사라진다."""
+
+    photoClicked = Signal(int)
+    entered = Signal()
+    left = Signal()
 
     def __init__(self, parent=None):
-        super().__init__(parent, Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
+        # Tool 창 (툴팁 창은 운영체제에 따라 마우스 누름을 받지 못할 수 있음) — 띄워도 포커스를 가져가지 않는다
+        super().__init__(parent, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint
+                         | Qt.WindowType.WindowDoesNotAcceptFocus)
         self.setObjectName("DxPreview")
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         lay = QVBoxLayout(self)
@@ -77,14 +139,33 @@ class DxPreview(QFrame):
         self.title = QLabel()
         self.title.setObjectName("DxPreviewTitle")
         lay.addWidget(self.title)
-        self._row = QHBoxLayout()
-        self._row.setSpacing(5)
-        lay.addLayout(self._row)
-        self.hint = QLabel("누르면 멀티 화면에 지금 환자 사진과 같이 (다시 누르면 빼기)")
+        self._grid = QGridLayout()
+        self._grid.setSpacing(5)
+        lay.addLayout(self._grid)
+        self.hint = QLabel(HINT_CHOOSE)
         self.hint.setObjectName("Muted")
+        self.hint.setWordWrap(True)
+        self.hint.setMaximumWidth(PREVIEW_COLS * (PREVIEW_THUMB.width() + 5))
         lay.addWidget(self.hint)
         self.photos: list[QLabel] = []
+        self.button = None                    # 지금 미리보기를 띄운 아이콘
         self._cache: dict[str, QPixmap] = {}
+
+    def enterEvent(self, e) -> None:  # noqa: N802 — QWidget 기본 처리는 비어 있음
+        self.entered.emit()
+
+    def leaveEvent(self, e) -> None:  # noqa: N802
+        self.left.emit()
+
+    def set_chosen(self, indexes) -> None:
+        """고른 사진(원래 순번) 표시."""
+        chosen = set(indexes or ())
+        for lb in self.photos:
+            if isinstance(lb, _PreviewPhoto):
+                lb.set_chosen(lb.index in chosen)
+
+    def chosen(self) -> list:
+        return [lb.index for lb in self.photos if isinstance(lb, _PreviewPhoto) and lb.chosen]
 
     def _pix(self, path: str) -> QPixmap:
         pm = self._cache.get(path)
@@ -96,32 +177,34 @@ class DxPreview(QFrame):
             self._cache[path] = pm
         return pm
 
-    def show_for(self, button, title: str, paths: list) -> None:
+    def show_for(self, button, title: str, paths: list, chosen=()) -> None:
         for lb in self.photos:
-            self._row.removeWidget(lb)
+            self._grid.removeWidget(lb)
             lb.deleteLater()
         self.photos = []
+        self.button = button
         self.title.setText(title)
-        shown = 0
-        for path in paths:
+        for i, path in enumerate(paths):
             pm = self._pix(path) if path else QPixmap()
             if pm.isNull():
-                continue
-            lb = QLabel()
-            lb.setObjectName("DxPreviewPhoto")
-            lb.setFixedSize(PREVIEW_THUMB)
-            lb.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            lb.setPixmap(pm)
-            self._row.addWidget(lb)
+                continue                       # 못 읽은 사진은 건너뛰되 순번은 원래 목록 기준 그대로
+            lb = _PreviewPhoto(i, pm)
+            lb.clicked.connect(self.photoClicked.emit)
+            n = len(self.photos)
+            self._grid.addWidget(lb, n // PREVIEW_COLS, n % PREVIEW_COLS)
+            lb.show()                          # 이미 떠 있던 창에 새로 넣은 사진도 크기 계산에 들어가게
             self.photos.append(lb)
-            shown += 1
-            if shown >= PREVIEW_MAX:
+            if len(self.photos) >= PREVIEW_MAX:
                 break
+        self.hint.setVisible(bool(self.photos))
         if not self.photos:
             lb = QLabel("사진 없음")
             lb.setObjectName("Muted")
-            self._row.addWidget(lb)
+            self._grid.addWidget(lb, 0, 0)
+            lb.show()
             self.photos.append(lb)
+        self.set_chosen(chosen)
+        self.layout().activate()
         self.adjustSize()
         pos = button.mapToGlobal(QPoint(0, button.height() + 4))   # 아이콘 바로 아래
         screen = QGuiApplication.screenAt(pos) or QGuiApplication.primaryScreen()
@@ -135,7 +218,7 @@ class DxPreview(QFrame):
 
 
 class _HoverWatch(QObject):
-    """질환 버튼에 마우스가 들어옴 · 나감 → DxBar 에 알린다."""
+    """질환 버튼에 마우스가 들어옴 · 나감 → DxBar 에 알린다 (누르거나 버튼이 숨으면 바로 닫음)."""
 
     def __init__(self, bar):
         super().__init__(bar)
@@ -145,13 +228,16 @@ class _HoverWatch(QObject):
         t = ev.type()
         if t == QEvent.Type.Enter:
             self.bar._hover_enter(obj)
-        elif t in (QEvent.Type.Leave, QEvent.Type.MouseButtonPress, QEvent.Type.Hide):
+        elif t == QEvent.Type.Leave:
             self.bar._hover_leave()
+        elif t in (QEvent.Type.MouseButtonPress, QEvent.Type.Hide):
+            self.bar.hide_preview()
         return False
 
 
 class DxBar(QFrame):
     diseaseClicked = Signal(str, str)     # (source: 'sample' | 'library', 분류 이름)
+    photoClicked = Signal(str, str, int)  # 미리보기에서 사진 한 장 (source, 분류, preview_provider 목록의 순번)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -176,19 +262,28 @@ class DxBar(QFrame):
         self._lay.addWidget(self.menu_btn)
         self.menu_btn.hide()
         self.preview_provider = None          # (source, 분류) → [사진 파일 경로] — 메인 창이 정한다
+        self.chosen_provider = None           # (source, 분류) → 멀티 화면에 놓인 사진 순번들 (없으면 표시 안 함)
         self.preview = DxPreview(self)
+        self.preview.photoClicked.connect(self._on_preview_photo)
+        self.preview.entered.connect(self._preview_entered)
+        self.preview.left.connect(self._preview_left)
         self._hover_btn = None
+        self._in_preview = False
         self._watch = _HoverWatch(self)
         self._hover_timer = QTimer(self)
         self._hover_timer.setSingleShot(True)
         self._hover_timer.setInterval(PREVIEW_DELAY_MS)
         self._hover_timer.timeout.connect(self.show_preview)
+        self._hide_timer = QTimer(self)
+        self._hide_timer.setSingleShot(True)
+        self._hide_timer.setInterval(PREVIEW_HIDE_MS)
+        self._hide_timer.timeout.connect(self._hide_if_away)
         self.hide()
 
     # ---- 목록 ----
     def set_categories(self, samples: list, library: list) -> None:
         """samples: [(질환 이름, 사진 수)], library: [등록한 분류 이름]. 버튼을 다시 만든다 (활성 질환은 유지)."""
-        self._hover_leave()
+        self.hide_preview()
         for b in self.buttons.values():
             self._lay.removeWidget(b)
             b.deleteLater()
@@ -231,15 +326,47 @@ class DxBar(QFrame):
     def entries(self) -> list:
         return list(self._entries)
 
-    # ---- 마우스를 올리면 사진 미리보기 ----
+    # ---- 마우스를 올리면 사진 미리보기 (그 안에서 사진 고르기) ----
     def _hover_enter(self, button) -> None:
+        self._hide_timer.stop()
         self._hover_btn = button
+        if self.preview.isVisible() and self.preview.button is button:
+            return                                   # 미리보기에서 같은 아이콘으로 돌아옴 — 그대로
         self._hover_timer.start()
 
     def _hover_leave(self) -> None:
+        """아이콘에서 마우스가 나감 — 미리보기 창으로 옮겨 갈 동안 잠깐 띄워 둔다."""
         self._hover_btn = None
         self._hover_timer.stop()
+        if self.preview.isVisible():
+            self._hide_timer.start()
+
+    def _preview_entered(self) -> None:
+        self._in_preview = True
+        self._hide_timer.stop()
+
+    def _preview_left(self) -> None:
+        self._in_preview = False
+        self._hide_timer.start()
+
+    def _hide_if_away(self) -> None:
+        if self._hover_btn is None and not self._in_preview and not self.preview.underMouse():
+            self.hide_preview()
+
+    def hide_preview(self) -> None:
+        self._hover_btn = None
+        self._in_preview = False
+        self._hover_timer.stop()
+        self._hide_timer.stop()
         self.preview.hide()
+
+    def _chosen_for(self, key) -> list:
+        if self.chosen_provider is None:
+            return []
+        try:
+            return list(self.chosen_provider(*key) or [])
+        except Exception:  # noqa: BLE001 — 표시 실패가 미리보기를 막지 않게
+            return []
 
     def show_preview(self, button=None) -> bool:
         """button(없으면 지금 마우스가 올라간 버튼)의 질환 사진을 아이콘 아래에 띄운다."""
@@ -253,11 +380,22 @@ class DxBar(QFrame):
             paths = list(self.preview_provider(*key) or [])
         except Exception:  # noqa: BLE001 — 미리보기 실패가 버튼을 막지 않게
             paths = []
-        self.preview.show_for(b, str(b.property("dx_title") or key[1]), paths)
+        self.preview.show_for(b, str(b.property("dx_title") or key[1]), paths, self._chosen_for(key))
         return True
 
+    def _on_preview_photo(self, index: int) -> None:
+        """미리보기에서 사진을 누름 → photoClicked (메인 창이 그 사진만 멀티 화면에 넣기 · 빼기) → ✓ 표시를 새로."""
+        b = self.preview.button
+        key = tuple(b.property("dx_key") or ()) if b is not None else ()
+        if len(key) != 2:
+            return
+        self._hide_timer.stop()
+        self.photoClicked.emit(key[0], key[1], int(index))
+        if self.preview.isVisible() and self.preview.button is b:
+            self.preview.set_chosen(self._chosen_for(key))
+
     def hideEvent(self, e) -> None:  # noqa: N802
-        self._hover_leave()
+        self.hide_preview()
         super().hideEvent(e)
 
     # ---- 상태 ----

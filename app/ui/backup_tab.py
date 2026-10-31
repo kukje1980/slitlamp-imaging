@@ -79,10 +79,14 @@ class BackupTab(QWidget):
         grid.addWidget(self.lbl_drive, 1, 1, 1, 2)
         lay.addLayout(grid)
 
-        self.chk_auto = QCheckBox("자동 백업 — 사진 · 동영상을 저장하는 즉시 백업 위치에 복사 (실시간), 켤 때 · 아래 주기로 빠진 "
-                                  "파일 확인 (끄면 '지금 백업' 으로 수동)")
+        self.chk_auto = QCheckBox("자동 백업")
         self.chk_auto.setChecked(bool(getattr(config, "backup_auto", True)))
         lay.addWidget(self.chk_auto)
+        auto_desc = QLabel("사진 · 동영상을 저장하는 즉시 백업 위치에 복사합니다 (실시간). 프로그램을 켤 때와 아래 주기마다 "
+                           "빠진 파일도 확인합니다. 끄면 '지금 백업' 을 눌러 직접(수동) 백업합니다.")
+        auto_desc.setObjectName("SettingsDesc")
+        auto_desc.setWordWrap(True)
+        lay.addWidget(auto_desc)
         row = QHBoxLayout()
         row.addWidget(QLabel("빠진 파일 확인"))
         self.c_interval = QComboBox()

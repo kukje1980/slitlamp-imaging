@@ -370,7 +370,7 @@ def test_settings_tab_change_actions_and_conflicts(qapp, win, monkeypatch):
 
     dlg = SettingsDialog(win.config, win)
     tab = dlg.usb_tab
-    assert dlg.tabs.tabText(dlg.tabs.indexOf(tab)) == "USB 버튼"
+    assert dlg.page_of(tab) == "단축키 · USB 버튼"
     assert tab.values() == {"1": {"key": "Ctrl+Alt+Shift+F9", "action": "record"},
                             "2": {"key": "Ctrl+Alt+Shift+F10", "action": "freeze"},
                             "3": {"key": "Ctrl+Alt+Shift+F8", "action": "capture"},

@@ -245,6 +245,68 @@ class CaptureService:
         """
         return self.delete_captures(self.captures_on(patient_id, day))
 
+    # ---- 프로그램을 끌 때 사진 지우기 (설정 → 저장 · 삭제) ----
+    def exit_cleanup_targets(self, scope: str, since_id: int = 0) -> list:
+        """끌 때 지울 영상(사진 · 동영상) 목록. 샘플 환자(SAMPLE-NN)의 영상은 뺀다.
+
+        scope: all = 모든 환자 · today = 오늘 촬영한 것 · session = since_id 보다 뒤에 기록된 것 (이번에 켠 뒤).
+        """
+        from app.services.sample_import import sample_patients
+        samples = {p.id for p in sample_patients(self.db)}
+        caps = [c for c in self.db.captures.list_all() if c.patient_id not in samples]
+        if scope == "today":
+            today = datetime.now().strftime("%Y-%m-%d")
+            caps = [c for c in caps if (c.captured_at or "")[:10] == today]
+        elif scope == "session":
+            caps = [c for c in caps if (c.id or 0) > since_id]
+        return caps
+
+    def delete_for_exit(self, captures, on_progress=None) -> int:
+        """여러 영상을 delete_capture 와 같은 규칙으로 지우고(export 사본 보존), 비게 된 저장 폴더도 치운다.
+
+        on_progress(지운 수, 전체 수) 가 False 를 돌려주면 멈춘다 (남은 것은 그대로 둔다). 지운 수를 돌려준다.
+        """
+        caps = list(captures)
+        dirs: set = set()
+        n = 0
+        for i, c in enumerate(caps):
+            if on_progress is not None and on_progress(i, len(caps)) is False:
+                break
+            path = getattr(c, "file_path", None)
+            if self.delete_capture(c):
+                n += 1
+                if path:
+                    dirs.add(Path(path).parent)
+        if on_progress is not None:
+            on_progress(len(caps), len(caps))
+        self._prune_empty_dirs(dirs)
+        return n
+
+    def _prune_empty_dirs(self, dirs) -> None:
+        """기본 저장 폴더(media_root) 안에서 비게 된 폴더(.thumbs 포함)만 지운다 — 파일이 하나라도 있으면 그대로."""
+        try:
+            root = Path(self.config.media_root).resolve()
+        except OSError:
+            return
+        for d in dirs:
+            try:
+                d = Path(d).resolve()
+            except OSError:
+                continue
+            for empty in (d / ".thumbs", d):
+                if root in empty.parents:
+                    try:
+                        empty.rmdir()
+                    except OSError:
+                        pass
+            d = d.parent
+            while root in d.parents:            # 날짜 폴더 위의 환자 폴더도 비었으면
+                try:
+                    d.rmdir()
+                except OSError:
+                    break
+                d = d.parent
+
     def low_space_warning(self) -> Optional[str]:
         """시작 시 상태바에 보여줄 디스크 여유 공간 경고 (문제 없으면 None)."""
         free = free_space_mb(self.config.media_root)

@@ -128,7 +128,7 @@ def test_dx_click_shows_refs_and_multi_with_patient_photo(qapp, win):
     assert 1 <= len(pv.photos) <= PREVIEW_MAX and pv.photos[0].pixmap() is not None
     assert pv.pos().y() >= b.mapToGlobal(b.rect().bottomLeft()).y()   # 아이콘 아래
     win.dx_bar._hover_leave()
-    assert not pv.isVisible()
+    assert _wait(qapp, lambda: not pv.isVisible(), 2)               # 미리보기 창으로 오지 않으면 잠시 뒤 닫힘
     _capture(win, qapp)                                         # 환자 사진 1장
     assert not win.ref_bar.isVisible() and not win._multi
     win.dx_bar.buttons[("sample", "건성안")].click()
@@ -278,9 +278,10 @@ def test_dx_short_labels_and_hover_preview(qapp, tmp_path):
     assert b.text() == "건성안" and b.toolTip() == ""                    # 툴팁 대신 미리보기
     QApplication.sendEvent(b, QEvent(QEvent.Type.Enter))
     assert _wait(qapp, lambda: bar.preview.isVisible(), 2)
-    assert asked == [("sample", "건성안")] and len(bar.preview.photos) == PREVIEW_MAX
+    assert asked == [("sample", "건성안")] and len(bar.preview.photos) == min(6, PREVIEW_MAX)
     QApplication.sendEvent(b, QEvent(QEvent.Type.Leave))
-    assert not bar.preview.isVisible()
+    assert bar.preview.isVisible()                                        # 미리보기 창으로 옮겨 갈 동안은 띄워 둠
+    assert _wait(qapp, lambda: not bar.preview.isVisible(), 2)            # 그 창으로 오지 않으면 잠시 뒤 닫힘
     bar.preview_provider = lambda s, c: []                                # 사진이 없으면 '사진 없음'
     assert bar.show_preview(b) and bar.preview.photos[0].text() == "사진 없음"
     bar.close()
@@ -302,3 +303,94 @@ def test_after_capture_viewer_has_dx_bar_and_compares(qapp, win):
     assert [c.id for c in win.thumbnail_panel.selected_captures()] == [cap.id]
     assert win.dx_bar.active() == ("sample", "백내장") and win.ref_bar.selected_refs()
 
+
+
+def test_dx_preview_stays_open_and_photos_are_clickable(qapp, tmp_path):
+    """미리보기 창으로 마우스를 옮겨도 닫히지 않고, 사진을 누르면 photoClicked(질환, 원래 순번) · ✓ 표시."""
+    img = tmp_path / "a.png"
+    cv2.imwrite(str(img), np.full((60, 80, 3), 120, np.uint8))
+    bar = DxBar()
+    bar.set_categories([("건성안", 3)], [])
+    chosen = set()
+    bar.preview_provider = lambda s, c: [str(tmp_path / "없음.png"), str(img), str(img)]   # 첫 장은 못 읽음
+    bar.chosen_provider = lambda s, c: sorted(chosen)
+    hits = []
+
+    def on_photo(s, c, i):
+        hits.append((s, c, i))
+        chosen.symmetric_difference_update({i})
+    bar.photoClicked.connect(on_photo)
+    bar.show()
+    b = bar.buttons[("sample", "건성안")]
+    QApplication.sendEvent(b, QEvent(QEvent.Type.Enter))
+    pv = bar.preview
+    assert _wait(qapp, lambda: pv.isVisible(), 2)
+    assert [lb.index for lb in pv.photos] == [1, 2] and pv.chosen() == []   # 순번은 원래 목록 기준
+    assert pv.hint.isVisible() and "누르면" in pv.hint.text()
+    # 아이콘 → 미리보기 창으로 옮김: 닫히지 않음
+    QApplication.sendEvent(b, QEvent(QEvent.Type.Leave))
+    QApplication.sendEvent(pv, QEvent(QEvent.Type.Enter))
+    time.sleep(0.5)
+    qapp.processEvents()
+    assert pv.isVisible()
+    QTest.mouseClick(pv.photos[1], Qt.MouseButton.LeftButton)            # 두 번째(원래 순번 2) 사진 고르기
+    assert hits == [("sample", "건성안", 2)] and pv.chosen() == [2] and pv.photos[1].property("chosen") == "true"
+    assert pv.isVisible() and pv.photos[1].grab() is not None             # ✓ 그리기 (오류 없이)
+    QTest.mouseClick(pv.photos[1], Qt.MouseButton.LeftButton)            # 다시 누르면 빼기
+    assert hits[-1] == ("sample", "건성안", 2) and pv.chosen() == []
+    # 미리보기 창에서도 나가면 잠시 뒤 닫힘 · 아이콘을 누르면 바로 닫힘
+    QApplication.sendEvent(pv, QEvent(QEvent.Type.Leave))
+    assert _wait(qapp, lambda: not pv.isVisible(), 2)
+    assert bar.show_preview(b) and pv.isVisible()
+    QTest.mouseClick(b, Qt.MouseButton.LeftButton)
+    assert not pv.isVisible()
+    bar.close()
+
+
+def test_dx_preview_photo_toggles_multi(qapp, win):
+    """상단 질환 아이콘 미리보기에서 사진을 골라 멀티 화면에 — 한 장씩 넣고 빼기, 다른 질환을 고르면 바꿔 넣기."""
+    _capture(win, qapp)                                                    # 환자 사진 1장
+    bar = win.dx_bar
+    b = bar.buttons[("sample", "건성안")]
+    assert bar.show_preview(b)
+    pv = bar.preview
+    assert len(pv.photos) == 2 and pv.chosen() == []
+    QTest.mouseClick(pv.photos[1], Qt.MouseButton.LeftButton)             # 건성안 두 번째 사진만
+    qapp.processEvents()
+    assert [r.title for r in win.ref_bar.selected_refs()] == ["건성안 2 (저해상도 120×90)"]
+    assert len(win.thumbnail_panel.selected_captures()) == 1               # 최근 환자 사진을 자동으로 같이
+    assert win._multi and win.multi_view.count() == 2 and bar.active() == ("sample", "건성안")
+    assert pv.isVisible() and pv.chosen() == [1]                           # 미리보기는 열린 채 ✓
+    QTest.mouseClick(pv.photos[0], Qt.MouseButton.LeftButton)             # 첫 번째도 넣기
+    qapp.processEvents()
+    assert win.multi_view.count() == 3 and pv.chosen() == [0, 1]
+    assert win._dx_preview_chosen("sample", "건성안") == [0, 1]
+    QTest.mouseClick(pv.photos[1], Qt.MouseButton.LeftButton)             # 두 번째 빼기
+    qapp.processEvents()
+    assert [r.title for r in win.ref_bar.selected_refs()] == ["건성안 1 (저해상도 120×90)"]
+    assert win.multi_view.count() == 2 and pv.chosen() == [0]
+    # 다른 질환 사진을 고르면 앞 질환 사진은 빠지고 그 질환으로
+    assert bar.show_preview(bar.buttons[("sample", "백내장")])
+    QTest.mouseClick(pv.photos[0], Qt.MouseButton.LeftButton)
+    qapp.processEvents()
+    assert [r.title for r in win.ref_bar.selected_refs()] == ["핵백내장 (저해상도 120×90)"]
+    assert bar.active() == ("sample", "백내장") and win.multi_view.count() == 2
+    QTest.mouseClick(pv.photos[0], Qt.MouseButton.LeftButton)             # 마지막 참조 사진을 빼면 아이콘도 꺼짐
+    qapp.processEvents()
+    assert win.ref_bar.selected_refs() == [] and bar.active() is None
+    bar.hide_preview()
+
+
+def test_viewer_dx_preview_photo_compares_with_new_capture(qapp, win):
+    """촬영 직후 큰 화면의 질환 아이콘 미리보기에서 사진을 누르면 창을 닫고 방금 찍은 사진 + 그 사진만 멀티 화면에."""
+    win._on_capture()
+    qapp.processEvents()
+    v = win._capture_viewer
+    b = v.dx_bar.buttons[("sample", "건성안")]
+    assert v.dx_bar.show_preview(b) and "방금 찍은" in v.dx_bar.preview.hint.text()
+    QTest.mouseClick(v.dx_bar.preview.photos[1], Qt.MouseButton.LeftButton)
+    assert _wait(qapp, lambda: win._multi, 3)
+    cap = win.db.captures.list_by_patient(win._current_patient.id)[0]
+    assert [c.id for c in win.thumbnail_panel.selected_captures()] == [cap.id]
+    assert [r.title for r in win.ref_bar.selected_refs()] == ["건성안 2 (저해상도 120×90)"]
+    assert win.multi_view.count() == 2 and win._capture_viewer is None

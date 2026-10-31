@@ -371,7 +371,8 @@ def test_settings_send_tab_saves(qapp, app_env):
     config, _db = app_env
     config.save = lambda: None
     dlg = SettingsDialog(config)
-    assert [dlg.tabs.tabText(i) for i in range(dlg.tabs.count())][:3] == ["일반", "카메라 · 저장", "전송"]
+    assert [dlg.tabs.tabText(i) for i in range(dlg.tabs.count())][:3] == ["설정 안내", "화면 · 소리", "촬영"]
+    assert dlg.page_of(dlg.send_method) == "전송"
     dlg.send_method.setCurrentIndex(dlg.send_method.findData("pacs"))
     assert not dlg.send_formats["jpg"].isEnabled() and dlg.send_formats["dicom"].isEnabled()
     dlg.pacs_host.setText("10.0.0.5")

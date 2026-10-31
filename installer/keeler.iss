@@ -9,7 +9,7 @@
 
 #define MyAppName "Keeler 슬릿램프 영상 시스템"
 #define MyAppNameEn "KeelerSlitLamp"
-#define MyAppVersion "1.20.0"
+#define MyAppVersion "1.20.1"
 #define MyAppPublisher "Kukje"
 #define MyAppExeName "KeelerSlitLamp.exe"
 

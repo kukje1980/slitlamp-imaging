@@ -82,6 +82,21 @@ log = logging.getLogger(__name__)
 MODES = ["capture", "pro", "exam", "home", "patients"]       # mode_stack 순서
 
 
+def send_notes_for(db, patient_id: int, caps) -> str:
+    """전송 보고서(PDF)에 넣을 검사 소견 — 보낼 사진을 찍은 날의 소견 (오늘 소견이 아님: 예전 사진을 오늘 보내도 그 내원의 소견).
+    여러 날의 사진이면 날짜별로 '[YYYY-MM-DD]' 를 붙여 모두 적는다. 소견이 없으면 빈 글."""
+    days = sorted({(getattr(c, "captured_at", "") or "")[:10] for c in caps or []} - {""})
+    if not days:
+        days = [datetime.now().strftime("%Y-%m-%d")]
+    blocks = []
+    for d in days:
+        note = db.exam_notes.get(patient_id, d) or {}
+        body = "\n".join(x for x in (note.get("exam_type") and f"[{note['exam_type']}]", note.get("notes")) if x)
+        if body:
+            blocks.append(body if len(days) == 1 else f"[{d}]\n{body}")
+    return "\n\n".join(blocks)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, config, db):
         super().__init__()
@@ -1702,9 +1717,7 @@ class MainWindow(QMainWindow):
         if not dlg.exec():
             return None
         formats = dlg.selected_formats()
-        note = self.db.exam_notes.get(p.id, datetime.now().strftime("%Y-%m-%d"))
-        notes = "\n".join(x for x in ((note or {}).get("exam_type") and f"[{note['exam_type']}]",
-                                         (note or {}).get("notes")) if x)
+        notes = send_notes_for(self.db, p.id, caps)       # 그 사진을 찍은 날의 소견 (오늘 소견이 아님)
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             res = ss.send(caps, p, self.config, formats=formats, notes=notes, pdf_writer=self._write_send_pdf)
@@ -2304,29 +2317,39 @@ class MainWindow(QMainWindow):
         caps = self.thumbnail_panel.selected_captures()
         if not caps:
             return 0
-        res = self._on_send()
+        if self._current_patient is None:
+            QMessageBox.information(self, "전송(삭제)", "환자를 먼저 선택하세요.")
+            return 0
+        res = self._send_captures(caps)                  # 고른 사진을 여기서 정해 두고 그대로 보낸다
         if res is None:
             return 0
         if not res.ok or res.skipped:
             QMessageBox.warning(self, "전송(삭제)", "모두 보내지 못해 이 PC 의 사진은 지우지 않았습니다.\n\n" + res.summary())
             return 0
+        # 지우는 것은 보낸 그 사진들뿐 — 결과 창 · 확인 창이 떠 있는 동안 고른 사진이 바뀌어도 (자동 촬영 · 목록 갱신)
         return self._delete_selected(confirm=True, title="전송(삭제)",
-                                     lead=f"보낸 {len(caps)}장을 이 PC 에서 삭제하시겠습니까?")
+                                     lead=f"보낸 {len(caps)}장을 이 PC 에서 삭제하시겠습니까?", caps=caps)
 
-    def _delete_selected(self, confirm: bool = True, title: str = "사진 삭제", lead: str = "") -> int:
-        """오른쪽 사진 목록에서 고른 사진 · 동영상 삭제 (오른쪽 클릭 메뉴 '삭제'). 확인 후 DB · 파일 · 썸네일을 지운다."""
+    def _delete_selected(self, confirm: bool = True, title: str = "사진 삭제", lead: str = "", caps=None) -> int:
+        """오른쪽 사진 목록에서 고른 사진 · 동영상 삭제 (오른쪽 클릭 메뉴 '삭제'). 확인 후 DB · 파일 · 썸네일을 지운다.
+        caps 를 주면 그 사진들만 (전송(삭제): 보낸 사진), 없으면 지금 고른 사진."""
         p = self._current_patient
-        caps = self.thumbnail_panel.selected_captures()
+        caps = list(caps) if caps is not None else self.thumbnail_panel.selected_captures()
         if p is None or not caps:
             return 0
         n_photo = sum(1 for c in caps if c.media_type != "video")
         n_video = len(caps) - n_photo
         what = " · ".join(x for x in (f"사진 {n_photo}장" if n_photo else "",
                                       f"동영상 {n_video}개" if n_video else "") if x)
+        # 필터(OD · OS · 동영상)나 '더 보기' 전이라 지금 목록에 보이지 않는 고른 사진도 함께 지워진다 — 확인 창에 알린다
+        shown = {c.id for c in self.thumbnail_panel.visible_captures()[:self.thumbnail_panel.shown_count()]}
+        hidden = sum(1 for c in caps if c.id not in shown)
+        hidden_note = (f"\n(이 중 {hidden}장은 지금 목록에 보이지 않는 사진입니다 — 필터 · '더 보기' 를 확인하세요)"
+                       if hidden else "")
         if confirm:
             ret = QMessageBox.question(
                 self, title,
-                (lead or f"고른 {what}을(를) 삭제하시겠습니까?") + "\n\n"
+                (lead or f"고른 {what}을(를) 삭제하시겠습니까?") + hidden_note + "\n\n"
                 "DB 기록과 저장된 파일(썸네일 포함)이 지워지며 되돌릴 수 없습니다.\n"
                 "(지정 폴더에 복사된 사본은 남겨 둡니다)",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,

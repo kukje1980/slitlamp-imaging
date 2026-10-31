@@ -172,6 +172,8 @@ class AppConfig:
             "right_click_items": (isinstance(self.right_click_items, list) and bool(self.right_click_items)
                                   and all(x in ("send", "send_delete", "multi", "delete") for x in self.right_click_items)),
             "thumbnail_max_side": self.thumbnail_max_side >= 480,   # 예전 기본 120 은 흐려서 480 으로
+            "start_eye": str(self.start_eye).upper() in ("OD", "OS", "NA"),
+            "sound_volume": 0 <= self.sound_volume <= 100,
             "capture_width": self.capture_width > 0,
             "capture_height": self.capture_height > 0,
             "camera_index": self.camera_index >= 0,

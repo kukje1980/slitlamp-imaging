@@ -954,7 +954,8 @@ def test_menu_items_setting_and_send_then_delete(qapp, win, monkeypatch):
     shown = [a.text() for a in panel.context_menu.actions() if a.isVisible() and a.isEnabled() and a.text()]
     assert shown == ["전송", "전송(삭제)", "삭제"]
     results = [SendResult(sent=["a"], errors=["PACS 응답 없음"]), SendResult(sent=["a", "b"])]
-    monkeypatch.setattr(win, "_on_send", lambda: results.pop(0))
+    # 전송(삭제)는 고른 사진을 정해 두고 _send_captures 로 바로 보낸다 (지울 때도 그 목록 그대로)
+    monkeypatch.setattr(win, "_send_captures", lambda caps, parent=None: results.pop(0))
     monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
     monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
     n0 = panel.count()

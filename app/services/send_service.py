@@ -73,8 +73,12 @@ def cloud_candidates() -> list[Path]:
     return out
 
 
-def _safe(s: str) -> str:
-    return _UNSAFE.sub("_", (s or "").strip()).strip("_") or "_"
+def _safe(s: str, max_bytes: int = 90) -> str:
+    """폴더 · 파일 이름 한 조각. 아주 긴 한글 이름 · 차트번호도 이름 한 칸 255바이트(맥 · 리눅스)를 넘지 않게 자른다
+    (한글 1자 = 3바이트, 차트번호_이름 · 차트번호_시각_눈_번호.확장자 로 이어 붙여도 남게)."""
+    s = _UNSAFE.sub("_", (s or "").strip()).strip("_")
+    s = s.encode("utf-8")[:max_bytes].decode("utf-8", "ignore").rstrip("._ ")
+    return s or "_"
 
 
 def patient_dir(root, patient, when: datetime | None = None) -> Path:
@@ -198,8 +202,10 @@ def send(captures: list, patient, config, formats: list | None = None, notes: st
                                         institution=getattr(config, "clinic_name", "") or "")
                     res.sent.append(str(dst))
                 elif f == "pdf":
-                    if img is not None:
-                        pdf_items.append((img, cap))
+                    if img is None:                  # PDF 에 넣지 못한 것은 건너뜀으로 적는다 — 안 적으면 '모두 보냄' 으로
+                        res.skipped.append((base, "동영상은 PDF 제외" if is_video else "사진을 읽지 못함"))  # 보여 전송(삭제)가 지운다
+                        continue
+                    pdf_items.append((img, cap))
             except Exception as e:  # noqa: BLE001
                 log.exception("send %s %s failed", f, base)
                 res.errors.append(f"{base}.{f}: {e}")

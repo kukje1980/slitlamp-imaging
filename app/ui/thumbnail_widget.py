@@ -73,14 +73,23 @@ class _UpgradeJob(QRunnable):
 
     def run(self) -> None:
         img = QImage()
+        tmp = self.thumb + ".sharp.jpg"
         try:
             img = _read_scaled_image(self.src, SHARP_W)
-            if not img.isNull():
-                tmp = self.thumb + ".sharp.jpg"
-                if img.save(tmp, "JPG", 90):
+            if not img.isNull() and img.save(tmp, "JPG", 90):
+                # 읽는 동안 그 사진을 지웠으면(썸네일 파일도 지워짐) 되살리지 않는다 — 지운 사진의 썸네일이 남으면 안 된다
+                if os.path.isfile(self.thumb) and os.path.isfile(self.src):
                     os.replace(tmp, self.thumb)          # 다음 실행부터는 이 파일이 바로 선명
+                else:
+                    img = QImage()
         except Exception:  # noqa: BLE001 — 썸네일은 다시 만들 수 있는 캐시: 실패해도 작은 것을 그대로 쓴다
             log.warning("thumbnail upgrade failed: %s", self.thumb, exc_info=True)
+        finally:
+            try:
+                if os.path.exists(tmp):                  # 저장 실패(디스크 가득 참 등) · 지운 사진 → 임시 파일을 남기지 않는다
+                    os.remove(tmp)
+            except OSError:
+                pass
         try:
             self.up.done.emit(self.thumb, img)
         except RuntimeError:                              # 프로그램이 닫히는 중

@@ -56,7 +56,7 @@ SETTLE_S = 10.0                  # 전체 확인 때 이보다 최근에 바뀐 
 INTERVALS = ((30, "30분마다"), (60, "1시간마다"), (240, "4시간마다"), (1440, "하루 한 번"))
 VIDEO_EXT = (".mp4", ".avi", ".mov", ".mkv", ".m4v")
 _JUNK = {"thumbs.db", ".ds_store", "desktop.ini"}
-_PART_SUFFIXES = (".part", ".bkpart", ".tmp")
+_PART_SUFFIXES = (".part", ".bkpart", ".tmp", ".sharp.jpg")   # .sharp.jpg: 선명한 썸네일을 만드는 중인 임시 파일
 CHUNK = 4 * 1024 * 1024          # 복사 단위 — 이만큼마다 중지 · 닫기를 확인
 _MAC = sys.platform == "darwin"
 EXAMPLE_ROOT = "/Volumes/외장하드/슬릿램프 백업" if _MAC else "E:\\슬릿램프 백업"

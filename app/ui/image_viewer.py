@@ -60,13 +60,15 @@ def _load_bgr(path: str):
 class ImageViewerDialog(QDialog):
     Deleted = 2  # exec() 반환값: 사용자가 '삭제'를 확인함
     retakeRequested = Signal()   # 촬영 뒤 보기 창에서 촬영 단축키를 누름 → 닫고 바로 다시 찍기
+    dxClicked = Signal(str, str)  # 질환 아이콘 (source, 분류) — 메인 창이 이 사진과 그 질환 샘플을 멀티 화면에
 
     def __init__(self, capture, parent=None, allow_delete: bool = True, after_capture: bool = False,
-                 capture_keys=()):
+                 capture_keys=(), dx_categories=None, dx_preview=None):
         super().__init__(parent)
         self.capture = capture
         self.after_capture = bool(after_capture)
         self.b_retake = None
+        self.dx_bar = None
         self.setWindowTitle((f"촬영한 사진 - {capture.captured_at}" if after_capture else f"보기 - {capture.captured_at}"))
         self.resize(920, 720)
         lay = QVBoxLayout(self)
@@ -81,6 +83,24 @@ class ImageViewerDialog(QDialog):
             lay.addWidget(QLabel("동영상을 기본 플레이어로 재생합니다.\n\n" + capture.file_path))
             lay.addLayout(self._footer(allow_delete))
             return
+
+        if dx_categories is not None:
+            # 상단 메뉴와 같은 질환별 샘플 아이콘 (이름 · 마우스를 올리면 사진) — 누르면 이 사진과 그 질환 샘플을 멀티 화면에
+            from app.ui.dx_bar import DxBar
+            samples, library = dx_categories
+            self.dx_bar = DxBar(self)
+            self.dx_bar.preview_provider = dx_preview
+            self.dx_bar.set_categories(samples, library)
+            self.dx_bar.diseaseClicked.connect(self.dxClicked.emit)
+            if self.dx_bar.entries():
+                row = QHBoxLayout()
+                row.setSpacing(6)
+                lbl = QLabel("질환별 샘플과 비교")
+                lbl.setObjectName("Muted")
+                row.addWidget(lbl)
+                row.addWidget(self.dx_bar)
+                row.addStretch(1)
+                lay.addLayout(row)
 
         bar = QHBoxLayout()
         bar.setSpacing(4)

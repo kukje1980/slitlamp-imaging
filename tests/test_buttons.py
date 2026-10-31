@@ -150,6 +150,16 @@ def test_quad_full_then_start_over_and_reset_on_toggle(qapp, win):
     QTest.mouseClick(cb.btn_quad, Qt.MouseButton.LeftButton)
 
 
+def _menu(qapp, panel, cap, what):
+    """사진 오른쪽 클릭 → 메뉴(전송 · 삭제 · 멀티)에서 하나를 누른다."""
+    QTest.mouseClick(panel._widgets[cap.id], Qt.MouseButton.RightButton)
+    qapp.processEvents()
+    assert panel.context_menu.isVisible()
+    panel.menu_actions[what].trigger()
+    for _ in range(5):
+        qapp.processEvents()
+
+
 def _photos(win, n, eyes=("OD", "OS")):
     import numpy as np
     from app.services.capture_service import CaptureService
@@ -188,11 +198,11 @@ def test_thumbnail_click_selects_double_click_opens(qapp, win, monkeypatch):
 def test_multi_view_select_save_and_reset(qapp, win):
     caps = _photos(win, 3)
     cb, panel = win.control_bar, win.thumbnail_panel
-    QTest.mouseClick(win.thumbnail_panel.btn_multi, Qt.MouseButton.LeftButton)           # 고른 사진이 없으면 켜지지 않음
-    assert not win._multi and not cb.btn_multi.isChecked() and not win.thumbnail_panel.btn_multi.isChecked()
+    win._multi_by_right_click()                                          # 고른 사진이 없으면 켜지지 않음
+    assert not win._multi and not cb.btn_multi.isChecked()
     for c in caps:
         QTest.mouseClick(panel._widgets[c.id], Qt.MouseButton.LeftButton)
-    QTest.mouseClick(win.thumbnail_panel.btn_multi, Qt.MouseButton.LeftButton)
+    _menu(qapp, panel, caps[-1], "multi")                               # 고른 사진 위 오른쪽 클릭 → 멀티
     assert win._multi and win.view_stack.currentIndex() == 2 and win.multi_view.count() == 3
     assert cb.btn_save_multi.isVisible() and cb.btn_freeze.isVisible() and not cb.btn_freeze.isEnabled()
     comp = win.multi_view.composite()
@@ -203,7 +213,7 @@ def test_multi_view_select_save_and_reset(qapp, win):
     saved = win.db.captures.list_by_patient(win._current_patient.id)[0]
     assert saved.note == "멀티 3장"
     assert [c.id for c in panel.selected_captures()] == [c.id for c in caps]   # 저장 후에도 선택 유지
-    QTest.mouseClick(win.thumbnail_panel.btn_multi, Qt.MouseButton.LeftButton)           # 다시 누르면 초기화
+    QTest.mouseClick(cb.btn_close_multi, Qt.MouseButton.LeftButton)     # 촬영 도크 '초기화' 로 닫기
     assert not win._multi and win.view_stack.currentIndex() == 0
     assert panel.selected_captures() == [] and win.multi_view.count() == 0
 
@@ -445,7 +455,7 @@ def test_center_buttons_stay_put_in_every_mode(qapp, win):
     caps = _photos(win, 2)
     for c in caps:
         QTest.mouseClick(win.thumbnail_panel._widgets[c.id], Qt.MouseButton.LeftButton)
-    QTest.mouseClick(win.thumbnail_panel.btn_multi, Qt.MouseButton.LeftButton)            # 멀티: 저장 생김
+    _menu(qapp, win.thumbnail_panel, caps[-1], "multi")                  # 멀티: 저장 생김
     assert centers() == base
 
 
@@ -455,25 +465,23 @@ def _enter_multi(qapp, win, n=3):
     panel = win.thumbnail_panel
     for c in caps:
         QTest.mouseClick(panel._widgets[c.id], Qt.MouseButton.LeftButton)
-    QTest.mouseClick(panel.btn_multi, Qt.MouseButton.LeftButton)
-    for _ in range(5):
-        qapp.processEvents()
+    _menu(qapp, panel, caps[-1], "multi")
     assert win._multi and win.multi_view.count() == n
     return caps
 
 
-def test_multi_button_above_od_os(qapp, win):
+def test_thumbnail_header_has_no_multi_button_and_menu_has_send_delete_multi(qapp, win):
+    """오른쪽 촬영 이미지 칸 위의 '멀티' 버튼은 없고, 사진 오른쪽 클릭 메뉴에 전송 · 삭제 · 멀티."""
     panel, cb = win.thumbnail_panel, win.control_bar
     qapp.processEvents()
-    assert not cb.btn_multi.isVisible()                                  # 촬영 도크에서는 빠짐
-    assert panel.btn_multi.isVisible()
-    y_multi = panel.btn_multi.mapTo(panel, panel.btn_multi.rect().bottomLeft()).y()
-    y_od = panel.filter_buttons["OD"].mapTo(panel, panel.filter_buttons["OD"].rect().topLeft()).y()
-    assert y_multi <= y_od                                               # '촬영 이미지' 줄 = OD · OS 위
+    assert not hasattr(panel, "btn_multi")
+    assert not cb.btn_multi.isVisible()                                  # 촬영 도크에서도 숨김
+    texts = [a.text() for a in panel.context_menu.actions() if a.text() and a.isEnabled() and a.isVisible()]
+    assert texts == ["전송", "멀티", "삭제"]                               # 기본 메뉴 (전송(삭제)는 설정에서 켬)
     _enter_multi(qapp, win, 2)
-    assert panel.btn_multi.isChecked() and cb.btn_multi.isChecked()
-    QTest.mouseClick(panel.btn_multi, Qt.MouseButton.LeftButton)        # 다시 누르면 초기화
-    assert not win._multi and not panel.btn_multi.isChecked()
+    assert cb.btn_multi.isChecked() and cb.btn_close_multi.isVisible()
+    QTest.mouseClick(cb.btn_close_multi, Qt.MouseButton.LeftButton)     # '초기화' 로 닫기
+    assert not win._multi
 
 
 def test_multi_has_pro_side_menus_and_magnifier_default(qapp, win):
@@ -685,7 +693,7 @@ def test_reference_bar_pick_shows_in_multi(qapp, win, tmp_path):
     rb.toggle(0)                                                          # 참조를 빼면 환자 사진만
     assert win._multi and win.multi_view.count() == 1
     rb.toggle(0)
-    QTest.mouseClick(panel.btn_multi, Qt.MouseButton.LeftButton)          # 멀티를 다시 누르면 참조 선택도 초기화
+    QTest.mouseClick(win.control_bar.btn_close_multi, Qt.MouseButton.LeftButton)   # '초기화' 는 참조 선택도 초기화
     assert not win._multi and rb.selected_refs() == [] and panel.selected_captures() == []
 
 
@@ -703,18 +711,22 @@ def test_reference_bar_in_multi_fits_small_screen(qapp, win):
 
 
 # ---------------- 오른쪽 클릭 = 멀티 · 큰 보기 돋보기 · 충혈 민감도 ----------------
-def test_right_click_opens_multi(qapp, win):
+def test_right_click_menu_opens_multi(qapp, win):
     caps = _photos(win, 3)
     panel = win.thumbnail_panel
     QTest.mouseClick(panel._widgets[caps[0].id], Qt.MouseButton.LeftButton)       # 1장 고름
-    QTest.mouseClick(panel._widgets[caps[2].id], Qt.MouseButton.RightButton)      # 다른 사진 오른쪽 클릭 → 그 사진도 골라 멀티
+    QTest.mouseClick(panel._widgets[caps[2].id], Qt.MouseButton.RightButton)      # 다른 사진 오른쪽 클릭 → 그 사진도 고르고 메뉴만
+    qapp.processEvents()
+    assert panel.context_menu.isVisible() and not win._multi
+    assert [c.id for c in panel.selected_captures()] == [caps[0].id, caps[2].id]
+    panel.menu_actions["multi"].trigger()
     for _ in range(5):
         qapp.processEvents()
     assert win._multi and [c.id for c in win.multi_view.captures()] == [caps[0].id, caps[2].id]
-    assert panel.btn_multi.isChecked() and win.control_bar.btn_multi.isChecked()
-    QTest.mouseClick(panel._widgets[caps[2].id], Qt.MouseButton.RightButton)      # 이미 고른 사진 → 그대로
+    assert win.control_bar.btn_multi.isChecked() and not panel.context_menu.isVisible()
+    _menu(qapp, panel, caps[2], "multi")                                           # 이미 고른 사진 → 그대로
     assert win._multi and win.multi_view.count() == 2
-    QTest.mouseClick(panel.btn_multi, Qt.MouseButton.LeftButton)                  # '멀티' 로 닫기 (선택 초기화)
+    QTest.mouseClick(win.control_bar.btn_close_multi, Qt.MouseButton.LeftButton)  # '초기화' 로 닫기 (선택 초기화)
     assert not win._multi and panel.selected_captures() == []
     QTest.mouseClick(win.video_view, Qt.MouseButton.RightButton)                  # 고른 사진 없이 영상 오른쪽 클릭 → 안내만
     assert not win._multi and "오른쪽 클릭" in win.statusBar().currentMessage()
@@ -756,7 +768,7 @@ def test_redness_sensitivity_slider_remeasures(qapp, win):
     panel = win.thumbnail_panel
     panel.set_patient(win._current_patient.id)
     qapp.processEvents()
-    QTest.mouseClick(panel._widgets[cap.id], Qt.MouseButton.RightButton)          # 오른쪽 클릭으로 멀티
+    _menu(qapp, panel, cap, "multi")                                                # 오른쪽 클릭 → 멀티
     mp = win.multi_pro
     assert mp.analysis.s_red_sens.value() == 5 and "기본" in mp.analysis.lbl_red_sens.text()
     r5 = mp.measure_redness()
@@ -780,9 +792,9 @@ def test_multi_reset_button_returns_to_live(qapp, win, tmp_path):
     for _ in range(5):
         qapp.processEvents()
     assert not win._multi and win.view_stack.currentIndex() == 0                      # 라이브 촬영 화면으로
-    assert panel.selected_captures() == [] and not panel.btn_multi.isChecked()
+    assert panel.selected_captures() == [] and not cb.btn_multi.isChecked()
     assert not cb.btn_close_multi.isVisible()
-    QTest.mouseClick(panel._widgets[caps[0].id], Qt.MouseButton.RightButton)         # 다시 오른쪽 클릭 → 멀티
+    _menu(qapp, panel, caps[0], "multi")                                             # 다시 오른쪽 클릭 → 멀티
     assert win._multi and cb.btn_close_multi.isVisible()
 
 
@@ -801,3 +813,192 @@ def test_long_photo_notes_do_not_widen_window(qapp, win):
         qapp.processEvents()
     assert win.pro.minimumSizeHint().width() < 1200
     assert win.minimumSizeHint().width() < 1200
+
+
+def test_right_click_menu_send_and_delete(qapp, win, monkeypatch):
+    """오른쪽 클릭 메뉴 '전송' = 고른 사진 전송, '삭제' = 확인 후 고른 사진 삭제 (멀티 중이면 닫고)."""
+    from PySide6.QtWidgets import QMessageBox
+    caps = _photos(win, 3)
+    panel = win.thumbnail_panel
+    sent = []
+    monkeypatch.setattr(win, "_on_send", lambda: sent.append([c.id for c in panel.selected_captures()]))
+    QTest.mouseClick(panel._widgets[caps[0].id], Qt.MouseButton.LeftButton)
+    _menu(qapp, panel, caps[1], "send")
+    assert sent == [[caps[0].id, caps[1].id]]
+    answers = [QMessageBox.StandardButton.No, QMessageBox.StandardButton.Yes]
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: answers.pop(0))
+    n0 = panel.count()
+    _menu(qapp, panel, caps[1], "delete")                                # 아니오 → 그대로
+    assert panel.count() == n0
+    _menu(qapp, panel, caps[1], "multi")
+    assert win._multi
+    _menu(qapp, panel, caps[1], "delete")                                # 예 → 2장 삭제 · 멀티 닫힘
+    assert panel.count() == n0 - 2 and not win._multi and panel.selected_captures() == []
+    left = [c.id for c in win.db.captures.list_by_patient(win._current_patient.id)]
+    assert caps[2].id in left and caps[0].id not in left and caps[1].id not in left
+
+
+def test_live_multi_setting_left_click_shows_multi(qapp, win):
+    """설정 '실시간 멀티화면': 왼쪽 클릭으로 고르는 즉시 가운데 멀티 화면, 다 빼면 라이브로 (끄면 예전처럼 고르기만)."""
+    caps = _photos(win, 2)
+    panel = win.thumbnail_panel
+    QTest.mouseClick(panel._widgets[caps[0].id], Qt.MouseButton.LeftButton)
+    assert not win._multi                                                  # 기본은 꺼짐
+    panel.clear_selection()
+    win.config.live_multi = True
+    QTest.mouseClick(panel._widgets[caps[0].id], Qt.MouseButton.LeftButton)
+    qapp.processEvents()
+    assert win._multi and win.multi_view.count() == 1
+    QTest.qWait(QApplication.doubleClickInterval() + 100)
+    QTest.mouseClick(panel._widgets[caps[1].id], Qt.MouseButton.LeftButton)
+    assert win._multi and win.multi_view.count() == 2
+    QTest.qWait(QApplication.doubleClickInterval() + 100)
+    QTest.mouseClick(panel._widgets[caps[0].id], Qt.MouseButton.LeftButton)
+    QTest.qWait(QApplication.doubleClickInterval() + 100)
+    QTest.mouseClick(panel._widgets[caps[1].id], Qt.MouseButton.LeftButton)  # 다 빼면 라이브
+    assert not win._multi and win.view_stack.currentIndex() == 0
+
+
+def test_settings_has_live_multi(qapp, app_env):
+    from app.ui.settings_dialog import SettingsDialog
+    config, _ = app_env
+    config.save = lambda: None
+    assert config.live_multi is False
+    dlg = SettingsDialog(config)
+    assert not dlg.live_multi.isChecked()
+    dlg.live_multi.setChecked(True)
+    dlg.apply_to_config()
+    assert config.live_multi is True
+    dlg.deleteLater()
+
+
+def test_thumbnail_sharp_from_original_and_retina(qapp, app_env, tmp_path):
+    """예전 120px 썸네일은 원본 사진에서 480px 로 다시 읽고, 레티나(2배)에서는 2배 크기로 그린다."""
+    import cv2
+    import numpy as np
+    from app.models.capture import Capture
+    from app.ui import thumbnail_widget as tw
+    big, small = tmp_path / "big.jpg", tmp_path / "small.jpg"
+    cv2.imwrite(str(big), np.full((1080, 1920, 3), 90, np.uint8))
+    cv2.imwrite(str(small), np.full((68, 120, 3), 90, np.uint8))
+    cap = Capture(id=1, patient_id=1, media_type="photo", file_path=str(big), thumbnail_path=str(small),
+                  captured_at="2026-10-31 11:45:00", eye="OD")
+    tw._cache.clear()
+    w = tw.ThumbnailWidget(cap)
+    assert w._pm is not None and w._pm.width() == 120                        # 작은 것 먼저 (화면이 멈추지 않게)
+    assert _wait(qapp, lambda: w._pm.width() == tw.SHARP_W, 5)             # 뒤에서 원본으로 선명하게 바꿔 그림
+    assert cv2.imread(str(small)).shape[1] == tw.SHARP_W                     # 썸네일 파일도 새로 → 다음엔 바로
+    assert tw.ThumbnailWidget(cap)._pm.width() == tw.SHARP_W
+    w.resize(230, 172)
+    w.devicePixelRatioF = lambda: 2.0
+    s = w._sharp_pixmap()
+    assert s.devicePixelRatio() == 2.0 and s.width() >= 2 * 220            # 화면 배율만큼 크게
+    w.deleteLater()
+    from app.config import AppConfig
+    assert AppConfig().thumbnail_max_side >= 480
+
+
+def test_right_click_action_setting_multi_direct(qapp, win, app_env):
+    """설정 '사진 오른쪽 클릭' = 멀티 화면 바로 → 메뉴 없이 멀티 (기본은 메뉴)."""
+    from app.ui.settings_dialog import SettingsDialog
+    caps = _photos(win, 2)
+    panel = win.thumbnail_panel
+    assert win.config.right_click_action == "menu" and panel.right_click_action == "menu"
+    dlg = SettingsDialog(win.config)
+    assert [dlg.right_click.itemData(i) for i in range(dlg.right_click.count())] == ["menu", "multi"]
+    dlg.right_click.setCurrentIndex(1)
+    dlg.apply_to_config()
+    dlg.deleteLater()
+    assert win.config.right_click_action == "multi"
+    panel.right_click_action = win.config.right_click_action          # (메인 창은 설정 창을 닫을 때 반영)
+    QTest.mouseClick(panel._widgets[caps[0].id], Qt.MouseButton.RightButton)
+    for _ in range(5):
+        qapp.processEvents()
+    assert win._multi and not panel.context_menu.isVisible() and win.multi_view.count() == 1
+
+
+def test_menu_items_setting_and_send_then_delete(qapp, win, monkeypatch):
+    """설정 '메뉴 항목'으로 전송 · 전송(삭제) · 멀티 · 삭제 중 고르기 — 전송(삭제)는 모두 보냈을 때만 확인 후 지운다."""
+    from PySide6.QtWidgets import QMessageBox
+    from app.services.send_service import SendResult
+    from app.ui.settings_dialog import SettingsDialog
+    caps = _photos(win, 3)
+    panel = win.thumbnail_panel
+    dlg = SettingsDialog(win.config)
+    assert [k for k, cb in dlg.menu_items.items() if cb.isChecked()] == ["send", "multi", "delete"]
+    dlg.menu_items["send_delete"].setChecked(True)
+    dlg.menu_items["multi"].setChecked(False)
+    dlg.apply_to_config()
+    dlg.deleteLater()
+    assert win.config.right_click_items == ["send", "send_delete", "delete"]
+    panel.set_menu_items(win.config.right_click_items)
+    assert panel.menu_items() == ["send", "send_delete", "delete"]
+    shown = [a.text() for a in panel.context_menu.actions() if a.isVisible() and a.isEnabled() and a.text()]
+    assert shown == ["전송", "전송(삭제)", "삭제"]
+    results = [SendResult(sent=["a"], errors=["PACS 응답 없음"]), SendResult(sent=["a", "b"])]
+    monkeypatch.setattr(win, "_on_send", lambda: results.pop(0))
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
+    n0 = panel.count()
+    QTest.mouseClick(panel._widgets[caps[0].id], Qt.MouseButton.LeftButton)
+    _menu(qapp, panel, caps[1], "send_delete")                           # 오류가 있으면 지우지 않음
+    assert panel.count() == n0
+    _menu(qapp, panel, caps[1], "send_delete")                           # 모두 보냄 → 확인 후 2장 삭제
+    assert panel.count() == n0 - 2
+    panel.set_menu_items([])                                              # 비면 기본
+    assert panel.menu_items() == ["send", "multi", "delete"]
+
+
+def test_eye_badges_od_right_os_left(qapp, app_env, tmp_path):
+    """썸네일 눈 표시: OD(우안)는 오른쪽 위 · OS(좌안)는 왼쪽 위, 크게 — 필터 · 눈 선택도 OS 왼쪽 · OD 오른쪽."""
+    import cv2
+    import numpy as np
+    from PySide6.QtGui import QImage
+    from app.models.capture import Capture
+    from app.ui import control_bar, thumbnail_panel
+    from app.ui import thumbnail_widget as tw
+    img = tmp_path / "g.png"
+    cv2.imwrite(str(img), np.full((300, 400, 3), 128, np.uint8))
+
+    def badge_side(eye):
+        cap = Capture(id=1, patient_id=1, media_type="photo", file_path=str(img), captured_at="2026-10-31 11:45:00", eye=eye)
+        w = tw.ThumbnailWidget(cap)
+        w.resize(240, 180)
+        im = w.grab().toImage().convertToFormat(QImage.Format.Format_RGB32)
+        col = tw.EYE_COLORS[eye].lstrip("#")
+        want = tuple(int(col[i:i + 2], 16) for i in (0, 2, 4))
+        xs = [x for x in range(im.width()) for y in range(4, 4 + tw.EYE_BADGE_H)
+              if sum(abs(a - b) for a, b in zip(im.pixelColor(x, y).getRgb()[:3], want)) < 60]
+        w.deleteLater()
+        return sum(xs) / len(xs) if xs else None
+    od, os_ = badge_side("OD"), badge_side("OS")
+    assert od is not None and os_ is not None and od > 120 > os_
+    assert [k for k, _t in thumbnail_panel._FILTERS] == ["all", "OS", "OD"]
+    assert [c for c, *_x in control_bar._EYE_BUTTONS][:2] == ["OS", "OD"]
+
+
+def test_patient_dropdown_removed_search_picks_patient(qapp, win):
+    """상단 환자 선택 드롭다운은 없고, 검색 칸에 치면 결과 목록 — 누르거나 Enter 로 고르고, 지금 환자는 검색 칸에 흐리게."""
+    pp = win.patient_panel
+    win.db.patients.insert(Patient(chart_no="K77", name="김선명"))
+    win.db.patients.insert(Patient(chart_no="K78", name="김선택"))
+    pp.select_patient(win._current_patient.id)
+    qapp.processEvents()
+    assert not pp.combo.isVisible() and pp.search.isVisible()
+    assert pp.search.placeholderText().startswith("환자: ") and win._current_patient.name in pp.search.placeholderText()
+    pp.search.setFocus()
+    pp.search.setText("김선")                                          # (한글 IME 입력 = 글자가 바뀜)
+    qapp.processEvents()
+    assert [p.chart_no for p in pp._matches] == ["K77", "K78"] or sorted(p.chart_no for p in pp._matches) == ["K77", "K78"]
+    assert win._current_patient.chart_no == "B1"                      # 치기만 해서는 바뀌지 않음
+    first = pp._matches[0]
+    QTest.keyClick(pp.search, Qt.Key.Key_Return)                       # Enter → 첫 결과
+    qapp.processEvents()
+    assert win._current_patient.id == first.id and pp.search.text() == ""
+    assert first.name in pp.search.placeholderText()
+    pp.search.setText("K78")
+    qapp.processEvents()
+    pp._pick_match(0)                                                  # 결과 목록에서 누름
+    QTest.qWait(50)
+    assert win._current_patient.chart_no == "K78" and pp.search.text() == ""
+

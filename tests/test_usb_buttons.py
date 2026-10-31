@@ -467,9 +467,9 @@ def test_capture_button_f8_saves_one_photo_with_displayed_eye(qapp, win):
 
 def test_eye_signals_explicit_od_os_and_pinned_at_capture(qapp, win):
     cb, hud = win.control_bar, win.video_view
-    assert cb.current_eye() == "NA" and win.eye_status()["source"] == "unknown"     # 처음엔 OD 로 짐작하지 않음
-    assert cb.eye_status.isVisible() and cb.eye_status.text() == "미확인"
-    assert hud._eye == "NA" and hud._eye_note == "미확인"
+    assert cb.current_eye() == "OD" and win.eye_status()["source"] == "default"     # 켜자마자 OD 가 골라져 있음
+    assert cb.eye_buttons["OD"].isChecked() and cb.eye_status.text() == "기본 OD"
+    assert hud._eye == "OD" and hud._eye_note == ""
     _click(_target(), F6)                                                           # 신호 3 → OD
     _pump(qapp)
     assert cb.current_eye() == "OD" and cb.eye_buttons["OD"].isChecked()
@@ -615,9 +615,11 @@ def test_eye_auto_off_and_no_shortcut_conflict(qapp, win):
     win.config.usb_eye_auto = False
     win._refresh_eye_status()
     assert not cb.eye_status.isVisible() and win.video_view._eye_note == ""
-    _click(_target(), F6)                                                            # 꺼져 있으면 신호를 받아도 그대로
+    _click(_target(), F7)                                                            # 꺼져 있으면 OS 신호를 받아도 그대로 (시작 OD)
     _pump(qapp)
-    assert cb.current_eye() == "NA" and "꺼져" in win.statusBar().currentMessage()
+    assert cb.current_eye() == "OD" and "꺼져" in win.statusBar().currentMessage()
+    cb.eye_buttons["NA"].click()
+    assert cb.current_eye() == "NA"
     cb.eye_buttons["OD"].click()
     assert cb.current_eye() == "OD"                                                  # 직접 고르기는 그대로
     win.config.usb_eye_auto = True
@@ -631,3 +633,25 @@ def test_eye_auto_off_and_no_shortcut_conflict(qapp, win):
     assert "eyeOD" not in win._shortcut_objs and "eyeOS" in win._shortcut_objs
     win.config.shortcuts = {}
     win._install_shortcuts()
+
+
+@pytest.mark.parametrize("start, eye, source, chip", [("OS", "OS", "default", "기본 OS"), ("NA", "NA", "unknown", "미확인")])
+def test_start_eye_setting(qapp, app_env, start, eye, source, chip):
+    """설정 start_eye: 켰을 때 미리 골라 둘 눈 (NA 면 예전처럼 미확인) — 좌우 신호가 오면 그 눈으로."""
+    from app.models.patient import Patient
+    from app.ui.main_window import MainWindow
+    config, db = app_env
+    config.source_mode = "synthetic"
+    config.save = lambda: None
+    config.capture_width, config.capture_height = 160, 120
+    config.start_eye = start
+    db.patients.insert(Patient(chart_no="SE1", name="시작눈"))
+    w = MainWindow(config, db)
+    try:
+        assert w.control_bar.current_eye() == eye and w.eye_status()["source"] == source
+        assert w.control_bar.eye_status.text() == chip
+        w._apply_device_eye("OD")
+        assert w.control_bar.current_eye() == "OD" and w.eye_status()["source"] == "device"
+    finally:
+        w.close()
+        w.deleteLater()

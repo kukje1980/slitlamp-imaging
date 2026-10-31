@@ -1,8 +1,8 @@
 """우측 썸네일 패널: 헤더(개수) + 필터(전체/OD/OS/동영상) + 촬영일별 묶음 목록.
 
 한 번 클릭 = 선택(번호 표시, 다시 누르면 해제) · 두 번 클릭 = 큰 화면으로 보기(thumbnailClicked).
-선택한 사진은 제목 줄 오른쪽(OD · OS 위)의 '멀티' 로 한 번에 모아 보고 편집한다.
-오른쪽 클릭 = '멀티' (그 사진을 안 골랐으면 골라서, multiRequested).
+오른쪽 클릭 = 전송 · 삭제 · 멀티 메뉴 또는 (설정 '사진 오른쪽 클릭' = 멀티) 멀티 화면 바로 (그 사진을 안 골랐으면 골라서, 고른 사진 전체에 적용 —
+sendRequested · deleteRequested · multiRequested, 실제 동작은 메인 창).
 촬영일 제목 줄 오른쪽의 쓰레기통 = 그 날 촬영한 사진 모두 삭제 요청(dayDeleteRequested, 실제 삭제는 메인 창)."""
 from __future__ import annotations
 
@@ -10,12 +10,14 @@ import time
 from datetime import date
 
 from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
@@ -27,7 +29,7 @@ from app.ui.theme import ICON_ACCENT, ICON_RECORD
 from app.ui.thumbnail_widget import ThumbnailWidget
 
 _DOW = "월화수목금토일"
-_FILTERS = [("all", "전체"), ("OD", "OD"), ("OS", "OS")]
+_FILTERS = [("all", "전체"), ("OS", "OS"), ("OD", "OD")]   # OS(좌안)는 왼쪽 · OD(우안)는 오른쪽
 PAGE = 120           # 한 번에 그리는 썸네일 수. 장기 추적 환자(수천 장)를 골라도 화면이 멈추지 않게 나눠 그린다
 
 
@@ -43,7 +45,10 @@ def day_label(day: str) -> str:
 class ThumbnailPanel(QFrame):
     thumbnailClicked = Signal(object)  # Capture — 두 번 클릭: 큰 화면으로 보기
     selectionChanged = Signal(list)    # 선택한 Capture 목록 (선택 순서)
-    multiRequested = Signal(object)    # Capture — 오른쪽 클릭: (안 골랐으면 고르고) 멀티로 모아 보기
+    multiRequested = Signal(object)    # Capture — 오른쪽 클릭 메뉴 '멀티': 고른 사진을 멀티로 모아 보기
+    sendRequested = Signal(list)       # 오른쪽 클릭 메뉴 '전송': 고른 사진 (선택 순서)
+    sendDeleteRequested = Signal(list) # 오른쪽 클릭 메뉴 '전송(삭제)': 보낸 뒤 이 PC 에서 삭제 (확인은 메인 창)
+    deleteRequested = Signal(list)     # 오른쪽 클릭 메뉴 '삭제': 고른 사진 (확인은 메인 창)
     dayDeleteRequested = Signal(str)   # 'YYYY-MM-DD' — 촬영일 제목 줄의 삭제 버튼: 그 날 영상 모두 삭제
 
     def __init__(self, db, newest_on_top: bool = True, parent=None, split_eyes: bool = False):
@@ -60,6 +65,28 @@ class ThumbnailPanel(QFrame):
         self._pre_click: tuple | None = None    # (capture id, 두 번 클릭 전 선택 목록)
         self._widgets: dict[int, ThumbnailWidget] = {}
         self.day_delete_buttons: dict[str, QPushButton] = {}   # 촬영일 → 삭제 버튼 (테스트 · 자동화용)
+        self._menu_target = None
+        self.right_click_action = "menu"     # menu: 전송 · 삭제 · 멀티 메뉴 | multi: 멀티 화면 바로 (설정 '사진 오른쪽 클릭')
+        self.context_menu = QMenu(self)      # 사진 오른쪽 클릭: 전송 · 삭제 · 멀티
+        self.context_menu.setObjectName("ThumbMenu")
+        self._menu_title = self.context_menu.addAction("")
+        self._menu_title.setEnabled(False)
+        self.context_menu.addSeparator()
+        self.menu_actions = {
+            "send": self.context_menu.addAction(icons.icon("send", ICON_ACCENT, 18), "전송"),
+            "send_delete": self.context_menu.addAction(icons.icon("send", ICON_RECORD, 18), "전송(삭제)"),
+            "multi": self.context_menu.addAction(icons.icon("review", ICON_ACCENT, 18), "멀티"),
+            "delete": self.context_menu.addAction(icons.icon("trash", ICON_RECORD, 18), "삭제"),
+        }
+        self.menu_actions["send"].setToolTip("고른 사진을 설정한 전송 방법(폴더 · 클라우드 · PACS)으로 보내기")
+        self.menu_actions["send_delete"].setToolTip("보낸 뒤 이 PC 에서 삭제 (모두 보냈을 때만 · 확인 후)")
+        self.menu_actions["send_delete"].triggered.connect(lambda: self._menu_do("send_delete"))
+        self.set_menu_items(["send", "multi", "delete"])
+        self.menu_actions["delete"].setToolTip("고른 사진 삭제 (확인 후)")
+        self.menu_actions["multi"].setToolTip("고른 사진을 한 화면에 모아 보고 편집 (닫기: 촬영 도크 '초기화')")
+        self.menu_actions["send"].triggered.connect(lambda: self._menu_do("send"))
+        self.menu_actions["delete"].triggered.connect(lambda: self._menu_do("delete"))
+        self.menu_actions["multi"].triggered.connect(lambda: self._menu_do("multi"))
 
         self.setObjectName("ThumbnailPanel")
         self.setFixedWidth(248)
@@ -76,16 +103,6 @@ class ThumbnailPanel(QFrame):
         head.addWidget(title)
         head.addWidget(self._badge)
         head.addStretch(1)
-        self.btn_multi = QPushButton(icons.gap("멀티"))
-        self.btn_multi.setObjectName("MultiBtn")
-        self.btn_multi.setCheckable(True)
-        self.btn_multi.setIcon(icons.icon("review", ICON_ACCENT, 16))
-        self.btn_multi.setIconSize(QSize(15, 15))
-        self.btn_multi.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.btn_multi.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_multi.setToolTip("아래 목록에서 한 번씩 눌러 고른 사진들을 한 화면에 모아 보고 편집 · 다시 누르면 선택 초기화\n"
-                                  "(사진이나 라이브 영상 위에서 마우스 오른쪽 클릭해도 멀티 화면)")
-        head.addWidget(self.btn_multi)
         outer.addLayout(head)
 
         chips = QHBoxLayout()
@@ -226,10 +243,40 @@ class ThumbnailPanel(QFrame):
         self.toggle_selection(capture)
 
     def _on_right(self, capture) -> None:
-        """오른쪽 클릭 = '멀티' — 그 사진을 아직 안 골랐으면 고르고(고른 순서 맨 뒤) 멀티 화면으로."""
+        """오른쪽 클릭 = 전송 · 삭제 · 멀티 메뉴. 그 사진을 아직 안 골랐으면 고르고(고른 순서 맨 뒤),
+        메뉴의 동작은 고른 사진 전체에 적용된다."""
         if capture.id not in self._selected:
             self.toggle_selection(capture)
-        self.multiRequested.emit(capture)
+        self._menu_target = capture
+        if self.right_click_action == "multi":
+            self.multiRequested.emit(capture)        # 설정: 오른쪽 클릭 = 멀티 화면 바로
+            return
+        n = len(self.selected_captures())
+        self._menu_title.setText(f"{n}장 선택" if n > 1 else "사진 1장")
+        self.context_menu.popup(QCursor.pos())
+
+    def set_menu_items(self, items) -> None:
+        """오른쪽 클릭 메뉴에 보일 항목 (설정 '메뉴 항목': send · send_delete · multi · delete). 비면 기본."""
+        keep = [k for k in (items or []) if k in self.menu_actions] or ["send", "multi", "delete"]
+        for k, act in self.menu_actions.items():
+            act.setVisible(k in keep)
+
+    def menu_items(self) -> list:
+        return [k for k, a in self.menu_actions.items() if a.isVisible()]
+
+    def _menu_do(self, what: str) -> None:
+        self.context_menu.hide()
+        caps = self.selected_captures()
+        if not caps:
+            return
+        if what == "send":
+            self.sendRequested.emit(caps)
+        elif what == "send_delete":
+            self.sendDeleteRequested.emit(caps)
+        elif what == "delete":
+            self.deleteRequested.emit(caps)
+        else:
+            self.multiRequested.emit(self._menu_target or caps[-1])
 
     def _on_double(self, capture) -> None:
         # 두 번 클릭 = 큰 화면으로 보기. 클릭으로 바뀐 선택은 두 번 클릭 전 상태로 되돌린다

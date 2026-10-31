@@ -103,9 +103,13 @@ def build_qss(mode: str = "dark") -> str:
 
     /* 상단바 질환 아이콘 줄 (app/ui/dx_bar.py) */
     QFrame#DxBar {{ background: {c['bg']}; border: 1px solid {c['rule']}; border-radius: 11px; }}
-    QPushButton#DxBtn {{ background: transparent; border: 1px solid transparent; border-radius: 7px; padding: 0px; min-height: 0px; }}
-    QPushButton#DxBtn:hover {{ background: {c['panel2']}; border-color: {c['rule']}; }}
-    QPushButton#DxBtn:checked {{ background: {c['raised']}; border: 1px solid {c['accent']}; }}
+    QToolButton#DxBtn {{ background: transparent; border: 1px solid transparent; border-radius: 7px; padding: 1px 0px 0px 0px; min-height: 0px;
+        color: {c['ink_soft']}; font-size: 10px; font-weight: 600; }}
+    QToolButton#DxBtn:hover {{ background: {c['panel2']}; border-color: {c['rule']}; color: {c['ink']}; }}
+    QToolButton#DxBtn:checked {{ background: {c['raised']}; border: 1px solid {c['accent']}; color: {c['accent']}; }}
+    QFrame#DxPreview {{ background: {c['panel']}; border: 1px solid {c['rule_strong']}; border-radius: 8px; }}
+    QLabel#DxPreviewTitle {{ color: {c['ink']}; font-weight: 700; }}
+    QLabel#DxPreviewPhoto {{ background: {c['bg']}; border: 1px solid {c['rule']}; border-radius: 4px; }}
     QPushButton#DxMenuBtn {{ background: transparent; border: 1px solid transparent; border-radius: 7px; padding: 4px 8px; min-height: 0px; color: {c['ink_soft']}; font-weight: 600; }}
     QPushButton#DxMenuBtn:hover {{ background: {c['panel2']}; border-color: {c['rule']}; color: {c['ink']}; }}
     QPushButton#DxMenuBtn::menu-indicator {{ width: 0px; }}
@@ -484,8 +488,9 @@ def _brand_qss(mode: str = "dark") -> str:
     QFrame#TopBar QLabel#BrandLogo, QFrame#TopBar QFrame#PatientPick {{ background: transparent; }}
     QFrame#TopBar QFrame#NavSeg {{ background: {h['seg']}; border: 1px solid {h['rule']}; }}
     QFrame#TopBar QFrame#DxBar {{ background: {h['seg']}; border: 1px solid {h['rule']}; }}
-    QFrame#TopBar QPushButton#DxBtn:hover {{ background: {h['hover']}; border-color: {h['rule']}; }}
-    QFrame#TopBar QPushButton#DxBtn:checked {{ background: {h['active']}; border: 1px solid {h['accent']}; }}
+    QFrame#TopBar QToolButton#DxBtn {{ color: {h['ink_soft'] if 'ink_soft' in h else h['ink']}; }}
+    QFrame#TopBar QToolButton#DxBtn:hover {{ background: {h['hover']}; border-color: {h['rule']}; }}
+    QFrame#TopBar QToolButton#DxBtn:checked {{ background: {h['active']}; border: 1px solid {h['accent']}; color: {h['accent']}; }}
     QFrame#TopBar QPushButton#NavBtn {{ background: transparent; border-color: transparent; }}
     QFrame#TopBar QPushButton#NavBtn:hover {{ background: {h['hover']}; border-color: {h['rule']}; }}
     QFrame#TopBar QPushButton#NavBtn:pressed {{ background: {h['hover']}; }}

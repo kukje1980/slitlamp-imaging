@@ -517,7 +517,7 @@ def test_config_garbage_starts_with_defaults(app_env, raw):
     ("photo_format", "exe"), ("photo_format", "../../x"), ("photo_format", ""),
     ("thumbnail_max_side", 0), ("thumbnail_max_side", -5),
     ("capture_width", -1920), ("capture_height", 0), ("camera_index", -3),
-    ("subfolder_template", ""), ("subfolder_template", "{"),
+    ("subfolder_template", ""), ("subfolder_template", "{"), ("right_click_action", "delete-all"), ("right_click_items", ["rm"]), ("right_click_items", []),
 ])
 def test_config_out_of_range_values_are_corrected(app_env, key, val):
     """값의 형식은 맞지만 말이 안 되는 설정 — 촬영이 전부 실패하지 않도록 기본값으로 되돌린다."""

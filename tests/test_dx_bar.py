@@ -9,14 +9,14 @@ from pathlib import Path
 import cv2
 import numpy as np
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from app.models.patient import Patient
 from app.services import sample_import
 from app.ui import icons
-from app.ui.dx_bar import DxBar, icon_for
+from app.ui.dx_bar import PREVIEW_MAX, DxBar, icon_for, short_label
 from app.ui.image_viewer import ImageViewerDialog
 
 
@@ -119,6 +119,16 @@ def test_dx_bar_lists_sample_and_library_categories(qapp):
 
 def test_dx_click_shows_refs_and_multi_with_patient_photo(qapp, win):
     assert win.dx_bar.isVisible() and [e[1] for e in win.dx_bar.entries()] == ["건성안", "백내장"]
+    for (source, cat), b in win.dx_bar.buttons.items():            # 아이콘 아래에 질환 이름
+        assert b.text() == short_label(cat, source) and b.text()
+    b = win.dx_bar.buttons[("sample", "건성안")]
+    assert win.dx_bar.show_preview(b)                              # 마우스를 올리면 그 질환 사진이 아래에 작게
+    pv = win.dx_bar.preview
+    assert pv.isVisible() and "건성안" in pv.title.text()
+    assert 1 <= len(pv.photos) <= PREVIEW_MAX and pv.photos[0].pixmap() is not None
+    assert pv.pos().y() >= b.mapToGlobal(b.rect().bottomLeft()).y()   # 아이콘 아래
+    win.dx_bar._hover_leave()
+    assert not pv.isVisible()
     _capture(win, qapp)                                         # 환자 사진 1장
     assert not win.ref_bar.isVisible() and not win._multi
     win.dx_bar.buttons[("sample", "건성안")].click()
@@ -237,3 +247,46 @@ def test_settings_has_view_after_capture(qapp, app_env):
     config.save = lambda: None
     dlg.apply_to_config()
     assert config.view_after_capture is False
+
+
+def test_dx_short_labels_and_hover_preview(qapp, tmp_path):
+    assert short_label("정상대조") == "정상대조" and short_label("안검염_MGD") == "안검염"
+    assert short_label("백내장수술후_후낭혼탁") == "후낭혼탁" and short_label("결막하출혈") == "결막출혈"
+    assert short_label("각막찰과상·상피결손·각막이물") == "찰과상" and short_label("감염각막염") == "각막염"
+    assert short_label("내가 만든 아주 긴 분류", "library") == "내가 …"
+    assert all(len(short_label(n)) <= 4 for n in ("정상 대조", "다래끼_콩다래끼", "익상편_검열반", "결막염"))
+    img = tmp_path / "a.png"
+    cv2.imwrite(str(img), np.full((60, 80, 3), 120, np.uint8))
+    bar = DxBar()
+    bar.set_categories([("건성안", 6)], [])
+    asked = []
+    bar.preview_provider = lambda s, c: asked.append((s, c)) or [str(img)] * 6 + [str(tmp_path / "없음.png")]
+    bar.show()
+    b = bar.buttons[("sample", "건성안")]
+    assert b.text() == "건성안" and b.toolTip() == ""                    # 툴팁 대신 미리보기
+    QApplication.sendEvent(b, QEvent(QEvent.Type.Enter))
+    assert _wait(qapp, lambda: bar.preview.isVisible(), 2)
+    assert asked == [("sample", "건성안")] and len(bar.preview.photos) == PREVIEW_MAX
+    QApplication.sendEvent(b, QEvent(QEvent.Type.Leave))
+    assert not bar.preview.isVisible()
+    bar.preview_provider = lambda s, c: []                                # 사진이 없으면 '사진 없음'
+    assert bar.show_preview(b) and bar.preview.photos[0].text() == "사진 없음"
+    bar.close()
+
+
+def test_after_capture_viewer_has_dx_bar_and_compares(qapp, win):
+    """촬영 직후 큰 화면에도 상단과 같은 질환 아이콘 — 누르면 창을 닫고 방금 찍은 사진 + 그 질환 샘플을 멀티 화면에."""
+    win._on_capture()
+    qapp.processEvents()
+    v = win._capture_viewer
+    assert v is not None and v.dx_bar is not None
+    assert [e[1] for e in v.dx_bar.entries()] == ["건성안", "백내장"]
+    b = v.dx_bar.buttons[("sample", "백내장")]
+    assert b.text() == "백내장" and v.dx_bar.show_preview(b) and v.dx_bar.preview.photos
+    cap = win.db.captures.list_by_patient(win._current_patient.id)[0]
+    v.dx_bar.buttons[("sample", "백내장")].click()
+    assert _wait(qapp, lambda: win._multi, 3)
+    assert win._capture_viewer is None
+    assert [c.id for c in win.thumbnail_panel.selected_captures()] == [cap.id]
+    assert win.dx_bar.active() == ("sample", "백내장") and win.ref_bar.selected_refs()
+

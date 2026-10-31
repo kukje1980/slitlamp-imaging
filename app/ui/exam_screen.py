@@ -67,7 +67,6 @@ def _esc(v) -> str:
 
 class ExamScreen(QWidget):
     openCapture = Signal(object)          # Capture 클릭 → 보기
-    openInPro = Signal()                  # 'Pro 검토에서 열기'
     editPatient = Signal()
     deleteDay = Signal(str)               # 'YYYY-MM-DD' — '날짜 삭제': 이 날 영상 모두 삭제 요청 (실제 삭제는 메인 창)
 
@@ -150,7 +149,6 @@ class ExamScreen(QWidget):
         self.btn_save_sel = tool_button("선택 저장", "save", "ToolBtn",
                                         tip="고른 사진·동영상만 원하는 폴더에 저장 (사진을 한 번 눌러 고르세요)",
                                         icon_size=20, min_width=60, color=ICON_ACCENT)
-        self.btn_pro = tool_button("Pro 검토", "review", "ToolBtn", tip="이 환자의 영상을 Pro 검토 화면에서 열기", icon_size=20, min_width=56)
         self.btn_print = tool_button("인쇄", "printer", "ToolBtn",
                                      tip="이 날의 영상(고른 사진이 있으면 그 사진만) + 소견을 보고서로 인쇄", icon_size=20, min_width=56)
         self.btn_pdf = tool_button("PDF", "file-pdf", "ToolBtn",
@@ -160,12 +158,11 @@ class ExamScreen(QWidget):
                                           color=ICON_RECORD)
         self.btn_select_all.clicked.connect(lambda: self.toggle_select_all())
         self.btn_save_sel.clicked.connect(lambda: self.save_selected())
-        self.btn_pro.clicked.connect(lambda: self.openInPro.emit())
         self.btn_print.clicked.connect(lambda: self.print_day())
         self.btn_pdf.clicked.connect(lambda: self.export_pdf_dialog())
         self.btn_delete_day.clicked.connect(self._request_delete_day)
         # 버튼 묶음: 좁은 창에서는 아이콘만 (이름은 풍선 도움말), 그래도 좁으면 옆으로 밀어 보기 — 글자 · 아이콘 겹침 방지
-        self._head_buttons = (self.btn_select_all, self.btn_save_sel, self.btn_pro, self.btn_print, self.btn_pdf,
+        self._head_buttons = (self.btn_select_all, self.btn_save_sel, self.btn_print, self.btn_pdf,
                               self.btn_delete_day)
         row = QWidget()
         row.setObjectName("ExamButtons")
@@ -497,7 +494,6 @@ class ExamScreen(QWidget):
             self.lbl_day_meta.setText("")            # 장 수 · 시간 · 선택 수는 _sync_selection 에서
         for b in (self.btn_print, self.btn_pdf):
             b.setEnabled(any(c.media_type == "photo" for c in caps))
-        self.btn_pro.setEnabled(bool(self._patient))
         self._sync_selection()
         # 소견
         self._loading = True

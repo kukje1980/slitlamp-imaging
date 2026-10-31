@@ -1,4 +1,4 @@
-"""상단바 질환 아이콘(DxBar) → 참조 줄 + 멀티 화면, 멀티 오른쪽 메뉴 접기, 촬영 직후 큰 화면 보기('다시 촬영')."""
+"""상단바 질환 아이콘(DxBar) → 멀티 화면 (숨긴 참조 선택 모델), 멀티 오른쪽 메뉴 접기, 촬영 직후 큰 화면 보기('다시 촬영')."""
 from __future__ import annotations
 
 import hashlib
@@ -133,7 +133,7 @@ def test_dx_click_shows_refs_and_multi_with_patient_photo(qapp, win):
     assert not win.ref_bar.isVisible() and not win._multi
     win.dx_bar.buttons[("sample", "건성안")].click()
     qapp.processEvents()
-    assert win.ref_bar.isVisible() and win.ref_bar.category_key() == ("sample", "건성안")
+    assert not win.ref_bar.isVisible() and win.ref_bar.category_key() == ("sample", "건성안")   # 참조 줄은 숨긴 채 (v1.20.3)
     assert [r.title for r in win.ref_bar.selected_refs()] == ["건성안 1 (저해상도 120×90)", "건성안 2 (저해상도 120×90)"]
     assert len(win.thumbnail_panel.selected_captures()) == 1   # 최근 환자 사진을 자동으로 골라 같이
     assert win._multi and win.multi_view.count() == 3 and win.view_stack.currentIndex() == 2
@@ -148,7 +148,7 @@ def test_dx_click_shows_refs_and_multi_with_patient_photo(qapp, win):
     qapp.processEvents()
     assert win.dx_bar.active() is None and win.ref_bar.selected_refs() == []
     assert win._multi and win.multi_view.count() == 1
-    # 참조 줄의 '빼기' 로 다 빼도 아이콘이 꺼진다
+    # 참조 선택을 다 비워도(초기화 등) 아이콘이 꺼진다
     win.dx_bar.buttons[("sample", "건성안")].click()
     qapp.processEvents()
     assert win.dx_bar.active() is not None
@@ -208,16 +208,28 @@ def test_capture_opens_big_viewer_with_retake(qapp, win, app_env):
     QTest.mouseClick(v.b_retake, Qt.MouseButton.LeftButton)
     qapp.processEvents()
     assert win._capture_viewer is None and win._mode == "capture"
-    # 보기 창에서 촬영 키(C)를 누르면 닫고 바로 다시 찍는다
+    # 보기 창에서 촬영 키(C)를 누르면 닫고 초기화 — 사진은 찍지 않는다 (v1.20.3 기본)
     p = win._current_patient
     n = len(db.captures.list_by_patient(p.id))
     win._on_capture()
     qapp.processEvents()
     v = win._capture_viewer
+    assert config.capture_in_view == "reset"
     QTest.keyClick(v, Qt.Key.Key_C)
-    assert _wait(qapp, lambda: len(db.captures.list_by_patient(p.id)) == n + 2)
+    for _ in range(10):
+        qapp.processEvents()
+    assert len(db.captures.list_by_patient(p.id)) == n + 1
+    assert win._capture_viewer is None and win._mode == "capture" and not win._multi
+    # 설정 '바로 촬영' 이면 예전처럼 닫고 바로 다시 찍는다
+    config.capture_in_view = "capture"
+    win._on_capture()
+    qapp.processEvents()
+    v = win._capture_viewer
+    QTest.keyClick(v, Qt.Key.Key_C)
+    assert _wait(qapp, lambda: len(db.captures.list_by_patient(p.id)) == n + 3)
     assert win._capture_viewer is not None and win._capture_viewer is not v
     win._close_capture_viewer()
+    config.capture_in_view = "reset"
     # 설정에서 끄면 보기 창이 뜨지 않는다
     config.view_after_capture = False
     win._on_capture()

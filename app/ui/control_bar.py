@@ -53,7 +53,7 @@ class ControlBar(QFrame):
     eyeChanged = Signal(str)             # 검사눈이 바뀜 (직접 고름 · 단축키 · 슬릿램프 신호 모두)
     eyeChosen = Signal(str)              # OD · OS · — 버튼을 직접 눌러 고름 (슬릿램프 좌우 신호와 구분)
     smartToggled = Signal(bool)          # Smart 도구줄 보이기 / 숨기기
-    refsToggled = Signal(bool)           # 참조 줄 보이기 / 숨기기
+    refsToggled = Signal(bool)           # (v1.20.3 부터 쓰지 않음 — 참조 줄 없앰. 호환용으로만 남김)
     multiToggled = Signal(bool)          # 멀티: 선택한 사진 한 번에 보기 (다시 누르면 초기화)
     saveMultiClicked = Signal()          # 멀티 화면 저장
     sendClicked = Signal()               # 전송: 고른 사진을 폴더 · 클라우드 · PACS 로
@@ -152,10 +152,10 @@ class ControlBar(QFrame):
         # 일시정지는 정지영상(누르면 멈춤 · 다시 누르면 라이브)과 같은 기능이라 화면에 두지 않는다
         self.btn_pause.setVisible(False)
         ll.addWidget(self.btn_smart)
-        ll.addWidget(self.btn_refs)
-        # '멀티' 는 오른쪽 '촬영 이미지' 칸(OD · OS 위)의 버튼, '모드'(촬영 모드)는 설정 창으로 옮겼다 —
+        # '멀티' 는 오른쪽 '촬영 이미지' 칸(OD · OS 위)의 버튼, '모드'(촬영 모드)는 설정 창으로 옮겼고,
+        # '참조'(아래 참조 줄)는 v1.20.3 에 없앴다 (참조 사진은 상단 질환 아이콘 · 설정 → 참조 영상 라이브러리) —
         # 여기 버튼은 상태 · 신호만 들고 화면엔 안 보임
-        for hidden in (self.btn_multi, self.btn_preset):
+        for hidden in (self.btn_multi, self.btn_preset, self.btn_refs):
             hidden.setParent(self)
             hidden.hide()
         self.multi_mirrors: list = []        # 같은 멀티 상태를 보여 줄 다른 버튼들 (촬영 이미지 칸의 '멀티')

@@ -1,4 +1,4 @@
-"""멀티 보기의 사진 격자 — 오른쪽 목록에서 고른 사진(+ 아래 '참조' 줄에서 고른 참조 사진)을 한 화면에 모은다.
+"""멀티 보기의 사진 격자 — 오른쪽 목록에서 고른 사진(+ 상단 질환 아이콘으로 고른 참조 사진)을 한 화면에 모은다.
 
 1장=전체, 2장=좌우, 3~4장=2×2, 5~6장=3×2, 7~9장=3×3 … (고른 순서대로, 참조 사진은 뒤에).
 칸마다 Pro 검토와 같은 편집 캔버스(ImageCanvas)이고, 누른 칸(노란 테두리)이 편집 대상이다.
@@ -138,7 +138,7 @@ class MultiView(QWidget):
         self.grid.setContentsMargins(0, 0, 0, 0)
         self.grid.setSpacing(6)
         lay.addWidget(self.grid_host, 1)
-        self.lbl_empty = QLabel("오른쪽 목록에서 사진을 한 번씩 눌러 고르거나 아래 '참조' 줄에서 참조 사진을 고르세요")
+        self.lbl_empty = QLabel("오른쪽 목록에서 사진을 한 번씩 눌러 고르거나 위 질환 아이콘으로 참조 사진을 고르세요")
         self.lbl_empty.setObjectName("MultiEmpty")
         self.lbl_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_empty.setWordWrap(True)

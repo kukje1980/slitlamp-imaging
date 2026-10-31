@@ -207,11 +207,13 @@ class MainWindow(QMainWindow):
         self.multi_view = self.multi_pro.grid_view
         self.view_stack.addWidget(self.multi_pro)
         self.control_bar = ControlBar()
-        self.ref_bar = RefBar(self.db)
+        # 참조 선택 모델 — v1.20.3 부터 화면 아래 참조 줄은 보이지 않는다 (상단 질환 아이콘이 고르고 뺌).
+        # 부모만 두고 숨겨 둔다 (부모 없이 두면 show() 될 때 따로 창이 뜬다). 라이브러리는 설정 → '참조 영상 라이브러리'.
+        self.ref_bar = RefBar(self.db, simple)
+        self.ref_bar.hide()
         self.smart_bar = SmartBar()
         self.agent_bar = AgentBar()
         left.addWidget(self.view_stack, 1)
-        left.addWidget(self.ref_bar)
         # 긴 줄은 좁은 창에서 눌려 겹치지 않게 옆으로 밀어 보는 칸에 (app/ui/fit.py)
         left.addWidget(HScroll(self.smart_bar, on_compact=self.smart_bar.set_compact))
         left.addWidget(HScroll(self.agent_bar))
@@ -248,7 +250,6 @@ class MainWindow(QMainWindow):
         self.pro.savedCapture.connect(self._on_pro_saved)
         self.pro.patientUpdated.connect(self._on_pro_patient_updated)
         self.exam_screen.openCapture.connect(self._on_thumbnail_clicked)
-        self.exam_screen.openInPro.connect(lambda: self.set_mode("pro"))
         self.exam_screen.editPatient.connect(lambda: self.patient_panel.edit_patient())
         self.exam_screen.deleteDay.connect(self._delete_day)
         self.home.action.connect(self._on_home_action)
@@ -291,8 +292,6 @@ class MainWindow(QMainWindow):
         self.multi_pro.patientUpdated.connect(self._on_pro_patient_updated)
         self.ref_bar.selectionChanged.connect(self._safe("참조", lambda: self._on_refs_changed(self.ref_bar.selected_refs())))
         self.ref_bar.libraryRequested.connect(self._safe("참조 라이브러리", lambda: self.open_references()))
-        self.ref_bar.hideRequested.connect(lambda: self._set_ref_bar_visible(False))
-        self.control_bar.refsToggled.connect(lambda on: self._set_ref_bar_visible(on))
         self.control_bar.eyeChanged.connect(lambda _e: self._refresh_eye_status())   # HUD 눈 칩 + 자동 인식 상태
         self.control_bar.eyeChosen.connect(self._note_manual_eye)                   # OD · OS 를 직접 고름
         cfg = self.config
@@ -329,7 +328,6 @@ class MainWindow(QMainWindow):
         self._on_patient_changed(self.patient_panel.current_patient())
         self._fullscreen = False
         self._set_smart_bar_visible(bool(getattr(cfg, "smart_bar_visible", True)), save=False)
-        self._set_ref_bar_visible(bool(getattr(cfg, "ref_bar_visible", False)), save=False)
         self._refresh_dx_bar()
         self._capture_viewer = None            # 촬영 직후 자동으로 뜨는 큰 보기 창
         self._install_shortcuts()
@@ -358,7 +356,7 @@ class MainWindow(QMainWindow):
         self.set_mode("capture" if getattr(self.config, "start_screen", "home") == "capture" else "home")
 
     def _build_topbar(self) -> QFrame:
-        """브랜드 + 아이콘 메뉴: [홈 | 촬영 | Pro 검토 | 검사 기록 | 환자 목록] [신규 환자 | 정보 수정] 환자 검색 … [설정]."""
+        """브랜드 + 아이콘 메뉴: [홈 | 촬영 | 검사 기록 | 환자 목록] [신규 환자 | 정보 수정] 환자 검색 … [설정]."""
         bar = QFrame()
         bar.setObjectName("TopBar")
         # 아래 화면(멀티의 Pro 메뉴 등)이 커도 상단바 높이는 그대로 — 눌리면 메뉴 글자가 아이콘 위로 겹친다
@@ -411,24 +409,18 @@ class MainWindow(QMainWindow):
             sl.setSpacing(2)
             return f, sl
 
-        # 촬영 / Pro 검토 전환 (act_pro 는 체크형 액션으로 유지)
-        self.act_pro = QAction("Pro 검토", self)
-        self.act_pro.setCheckable(True)
-        self.act_pro.setToolTip("전문가용 영상 검토 화면 (MULTI·비교·보정·편집·인쇄)")
-        self.act_pro.toggled.connect(self._on_pro_toggled)
-        self.addAction(self.act_pro)
+        # 화면 전환: 홈 · 촬영 · 검사 기록 · 환자 목록 (v1.20.3: Pro 검토 버튼 없앰 — Pro 기능은 멀티 화면 안에)
         sw, sl = seg()
         self.btn_mode_home = nav("홈", "home", "시작 화면 (아이콘 메뉴)", checkable=True)
         self.btn_mode_capture = nav("촬영", "camera", "실시간 촬영 화면", checkable=True)
-        self.btn_mode_pro = nav("Pro 검토", "review", self.act_pro.toolTip(), checkable=True)
         self.btn_mode_exam = nav("검사 기록", "clipboard", "촬영일별 영상 모음과 검사 소견", checkable=True)
         self.btn_mode_patients = nav("환자 목록", "list", "등록된 환자 목록 — 차트번호 · 이름으로 찾아 촬영 · 검사 기록으로",
                                      checkable=True)
         self.mode_buttons = {"home": self.btn_mode_home, "capture": self.btn_mode_capture,
-                             "pro": self.btn_mode_pro, "exam": self.btn_mode_exam,
+                             "exam": self.btn_mode_exam,
                              "patients": self.btn_mode_patients}
         grp = QButtonGroup(self)
-        for mode, name in (("home", "home"), ("capture", "camera"), ("pro", "review"), ("exam", "clipboard"),
+        for mode, name in (("home", "home"), ("capture", "camera"), ("exam", "clipboard"),
                            ("patients", "list")):
             btn = self.mode_buttons[mode]
             ic = icons.icon(name, ICON, 20)
@@ -440,7 +432,7 @@ class MainWindow(QMainWindow):
         self.btn_mode_capture.setChecked(True)
         lay.addWidget(sw)
 
-        # 환자: 신규 등록 · 정보 수정 (Pro 검토 바로 옆)
+        # 환자: 신규 등록 · 정보 수정 (화면 버튼 바로 옆)
         pw, pl = seg()
         self.btn_new_patient = nav("신규 환자", "user-plus", "신규 환자 등록", color=ICON_ACCENT)
         self.btn_edit_patient = nav("정보 수정", "user-edit", "선택한 환자 정보 수정")
@@ -450,7 +442,7 @@ class MainWindow(QMainWindow):
         pl.addWidget(self.btn_edit_patient)
         lay.addWidget(pw)
         lay.addWidget(self.patient_panel)               # 이름 · 차트번호 검색 + 환자 선택
-        # 빈 공간: 질환별 작은 아이콘 — 누르면 아래 참조 줄에 그 질환 사진 + 멀티 화면 (app/ui/dx_bar.py)
+        # 빈 공간: 질환별 작은 아이콘 — 누르면 그 질환 사진을 환자 사진 옆에 놓아 멀티 화면 (다시 누르면 뺌) (app/ui/dx_bar.py)
         self.dx_bar = DxBar()
         self.dx_bar.diseaseClicked.connect(self._on_dx_clicked)
         self.dx_bar.preview_provider = self._dx_preview_paths       # 마우스를 올리면 그 질환 사진을 작게
@@ -458,7 +450,7 @@ class MainWindow(QMainWindow):
         lay.addStretch(1)
 
         # 카메라 재연결 · 단축키 · 샘플 · 테마는 모두 설정 창 안으로 (오른쪽에는 설정 하나)
-        # 참조(질환별 참조 영상 · 샘플 사진)는 아래 촬영 도크의 '참조' 줄로 옮겼다
+        # 참조 영상 라이브러리(등록 · 정보 수정 · 샘플 가져오기)는 설정 창의 빠른 버튼 '참조 영상 라이브러리'
         tw, tl = seg()
         self.btn_settings = nav("설정", "gear", "설정 — 카메라 다시 연결 · 단축키 · 샘플 사진 · 화면 테마 · Smart 도구줄 · 저장 위치")
         self.btn_settings.clicked.connect(self._safe("설정", lambda: self._open_settings()))
@@ -601,8 +593,8 @@ class MainWindow(QMainWindow):
         self._shortcut_objs = {}
         usb_keys = [b["key"] for b in usb_buttons.load(self.config).values()]
         for aid, key in self._keys.items():
-            if not key:
-                continue
+            if not key or aid in shortcuts.HIDDEN_IN_STANDARD:
+                continue                                    # 숨긴 동작(촬영 ↔ Pro 전환)은 걸지 않음
             if any(usb_buttons.same_key(key, k) for k in usb_keys):
                 # 같은 키를 USB 버튼이 쓰면 USB 버튼이 먼저 (한 번 눌러 두 동작이 겹치지 않게)
                 log.warning("단축키 %s(%s) 는 USB 버튼 키와 같아 쓰지 않습니다", aid, key)
@@ -628,7 +620,7 @@ class MainWindow(QMainWindow):
     def _apply_key_hints(self) -> None:
         cb = self.control_bar
         hints = {"capture": cb.btn_capture, "record": cb.btn_record,
-                 "freeze": cb.btn_freeze, "quad": cb.btn_quad, "mode": self.btn_mode_pro,
+                 "freeze": cb.btn_freeze, "quad": cb.btn_quad,
                  "newPatient": self.btn_new_patient, "peaking": self.smart_bar.btn_peaking}
         for aid, w in hints.items():
             base = w.property("tipBase")
@@ -658,8 +650,8 @@ class MainWindow(QMainWindow):
                 cb.set_eye(code)
                 self._note_manual_eye(code)
             self.statusBar().showMessage(f"안구: {'미지정' if code == 'NA' else code}", 2000)
-        elif aid == "capture" and cb.btn_capture.isEnabled():
-            self._on_capture()
+        elif aid == "capture" and (cb.btn_capture.isEnabled() or (self._multi and self._capture_resets())):
+            self._on_capture()                  # 멀티 화면에서는 설정에 따라 초기화 (_on_capture 안에서)
         elif aid == "record" and cb.btn_record.isEnabled():
             cb.btn_record.toggle()
         elif aid == "pause" and cb.btn_pause.isVisible() and cb.btn_pause.isEnabled():
@@ -677,8 +669,6 @@ class MainWindow(QMainWindow):
             self.smart_bar.btn_peaking.toggle()
         elif aid == "fullscreen":
             self._set_fullscreen(not self._fullscreen)
-        elif aid == "mode":
-            self.act_pro.toggle()
         elif aid == "patients":
             self.set_mode("patients")
         elif aid == "newPatient":
@@ -703,7 +693,9 @@ class MainWindow(QMainWindow):
                                        QPlainTextEdit, QTextEdit)
         viewer = self._capture_viewer
         if viewer is not None and QApplication.activeWindow() is viewer:
-            self._close_capture_viewer()          # 촬영 뒤 보기 창: USB 버튼이 오면 닫고 바로 다음 동작 (다시 촬영 등)
+            # 촬영 뒤 보기 창: USB 버튼이 오면 닫고 바로 다음 동작 — 사진 버튼은 설정에 따라 초기화 (_on_usb_button)
+            self._close_capture_viewer()
+            self._usb_viewer_closed_at = time.monotonic()
         elif QApplication.activeWindow() is not self or QApplication.activeModalWidget() is not None:
             return "window"                       # 설정 · 안내 창 · 다른 프로그램
         if self._mode != "capture" or self.mode_stack.currentIndex() != 0:
@@ -736,6 +728,17 @@ class MainWindow(QMainWindow):
 
     def _on_usb_button(self, bid: str, action: str) -> None:
         """USB 버튼 → 촬영 도크 버튼과 같은 동작 (녹화 시작/정지 · 스틸 정지/해제 · 사진 캡처), 좌우 신호 → 검사눈."""
+        # 이 누름이 촬영 뒤 보기 창을 닫았는가 (_usb_context 가 누른 순간 닫음) — 어느 버튼이든 여기서 읽고 바로 지운다
+        closed_viewer = time.monotonic() - getattr(self, "_usb_viewer_closed_at", -1e9) < 2.0
+        self._usb_viewer_closed_at = -1e9
+        if action == "capture" and closed_viewer and self._capture_resets():
+            # 촬영 직후 큰 화면에서 USB 사진 버튼 = 초기화 (설정 → 일반 '보기 · 멀티 화면에서 캡처').
+            # 창을 닫은 직후라 메인 창이 아직 활성화되지 않았을 수 있어(맥 · 윈도우) 화면 검사보다 먼저 한다
+            self.events.log("usb_button", button=bid, action="reset")
+            self._reset_capture_view("viewer")
+            self.statusBar().showMessage(f"USB {usb_buttons.button_label(bid)}: 초기화 — 라이브 촬영 화면 "
+                                         "(다시 누르면 촬영)", 3000)
+            return
         if usb_buttons.is_eye_action(action):
             code = usb_buttons.EYE_ACTIONS[action]
             if not self.config.usb_eye_auto:
@@ -751,6 +754,12 @@ class MainWindow(QMainWindow):
             return
         cb = self.control_bar
         name = usb_buttons.button_label(bid)
+        if action == "capture" and self._multi and self._capture_resets():
+            # 멀티 화면에서 USB 사진 버튼 = 초기화 (설정 → 일반 '보기 · 멀티 화면에서 캡처')
+            self.events.log("usb_button", button=bid, action="reset")
+            self._reset_capture_view("multi")
+            self.statusBar().showMessage(f"USB {name}: 초기화 — 라이브 촬영 화면 (다시 누르면 촬영)", 3000)
+            return
         btn = {"record": cb.btn_record, "freeze": cb.btn_freeze, "capture": cb.btn_capture}.get(action)
         if btn is None:
             return
@@ -919,7 +928,6 @@ class MainWindow(QMainWindow):
             if w is not None:
                 w.setVisible(not on)
         self.smart_bar.setVisible(not on and bool(self.config.smart_bar_visible))
-        self.ref_bar.setVisible(not on and bool(self.config.ref_bar_visible))
         if on:
             self._was_maximized = self.isMaximized()
             self.showFullScreen()
@@ -932,9 +940,12 @@ class MainWindow(QMainWindow):
         parent = parent if parent is not None and parent is not False else self
         taken = {b["key"]: f"슬릿램프 USB {usb_buttons.button_label(bid)}({usb_buttons.action_label(b['action'])})"
                  for bid, b in usb_buttons.load(self.config).items() if b["key"]}
-        dlg = ShortcutsDialog(self._keys, parent, taken=taken)
+        dlg = ShortcutsDialog(self._keys, parent, taken=taken, hidden=shortcuts.HIDDEN_IN_STANDARD)
         if dlg.exec():
-            self.config.shortcuts = dlg.values()
+            # 숨긴 동작(Explorer 판이 쓰는 'mode' 등)의 저장된 키는 그대로 둔다
+            saved = dict(getattr(self.config, "shortcuts", None) or {})
+            kept = {aid: v for aid, v in saved.items() if aid in shortcuts.HIDDEN_IN_STANDARD}
+            self.config.shortcuts = {**kept, **dlg.values()}
             try:
                 self.config.save()
             except Exception:  # noqa: BLE001
@@ -1130,7 +1141,7 @@ class MainWindow(QMainWindow):
         self.events.log("patient_changed", has_patient=patient is not None)
 
     # ---- 상단 질환 아이콘 (app/ui/dx_bar.py) ----
-    DX_MAX_REFS = 4                      # 한 질환에서 멀티 화면에 같이 놓는 사진 수 (참조 줄에서 더 고를 수 있음)
+    DX_MAX_REFS = 4                      # 한 질환에서 멀티 화면에 같이 놓는 사진 수 (다시 누르면 뺌)
 
     def _refresh_dx_bar(self) -> None:
         """샘플 질환 · 등록한 참조 분류로 상단 아이콘 줄을 다시 만든다 (샘플 가져오기 · 참조 등록 뒤)."""
@@ -1150,7 +1161,7 @@ class MainWindow(QMainWindow):
         return [r.thumbnail_path or r.file_path for r in refs[:8]]
 
     def _on_dx_clicked(self, source: str, category: str) -> None:
-        """질환 아이콘: 참조 줄을 열어 그 질환 사진을 보이고, 지금 환자 사진과 함께 멀티 화면으로.
+        """질환 아이콘: 그 질환 사진(최대 DX_MAX_REFS 장)을 지금 환자 사진과 함께 멀티 화면으로.
         같은 아이콘을 다시 누르면 그 질환 사진을 뺀다."""
         log.info("버튼: 질환 참조 %s/%s", source, category)
         try:
@@ -1168,7 +1179,6 @@ class MainWindow(QMainWindow):
             return
         if self._mode != "capture":
             self.set_mode("capture")
-        self._set_ref_bar_visible(True)
         if not self.ref_bar.show_category(source, category):
             self.ref_bar.refresh()
             if not self.ref_bar.show_category(source, category):
@@ -1186,7 +1196,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(
             f"'{category}' 참조 사진 {len(refs)}장" + (f" + 환자 사진 {n_pt}장을 멀티 화면에 놓았습니다" if n_pt
                                                    else " — 오른쪽 목록에서 환자 사진을 누르면 같이 놓입니다")
-            + "  ·  아래 참조 줄에서 사진을 더 고르거나 뺄 수 있습니다", 6000)
+            + "  ·  같은 아이콘을 다시 누르면 뺍니다", 6000)
 
     # ---- 촬영 직후 큰 화면 보기 ----
     def _show_capture_viewer(self, cap) -> None:
@@ -1205,6 +1215,9 @@ class MainWindow(QMainWindow):
                                 dx_categories=dx, dx_preview=self._dx_preview_paths)
         dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         dlg.retakeRequested.connect(lambda d=dlg: self._retake_from_viewer(d))
+        dlg.sendRequested.connect(self._safe("보기 창 전송", lambda d=dlg, c=cap: self._send_from_viewer(d, c)))
+        dlg.sendDeleteRequested.connect(self._safe("보기 창 전송(삭제)",
+                                                   lambda d=dlg, c=cap: self._send_from_viewer(d, c, delete=True)))
         dlg.dxClicked.connect(lambda s, c, d=dlg, cp=cap: self._dx_from_viewer(d, cp, s, c))
         dlg.finished.connect(lambda code, d=dlg, c=cap: self._on_capture_viewer_closed(d, c, code))
         self._capture_viewer = dlg
@@ -1225,15 +1238,47 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, lambda: self._on_dx_clicked(source, category))
 
     def _retake_from_viewer(self, dlg) -> None:
-        """보기 창에서 촬영 키 → 창을 닫고 바로 다시 찍는다."""
+        """보기 창에서 촬영 키 → 창을 닫고 초기화(기본) 또는 바로 다시 찍기 (설정 capture_in_view)."""
         dlg.accept()
+        if self._capture_resets():
+            self._reset_capture_view("viewer")
+            return
         QTimer.singleShot(0, lambda: self._run_action("capture"))
+
+    def _capture_resets(self) -> bool:
+        """촬영 직후 큰 화면 · 멀티 화면에서 캡처 = 초기화인가 (설정 → 일반 '보기 · 멀티 화면에서 캡처')."""
+        return getattr(self.config, "capture_in_view", "reset") != "capture"
+
+    def _reset_capture_view(self, where: str = "") -> None:
+        """초기화: 촬영 뒤 보기 창 · 멀티 화면을 닫고 고른 사진 · 참조 사진 · 질환 아이콘 · 정지 화면을 비워
+        라이브 촬영 화면으로 돌아간다. 사진은 찍지 않는다 (한 번 더 누르면 그때 촬영)."""
+        self._close_capture_viewer()
+        if self._multi:
+            self._exit_multi(clear=True)
+        else:
+            self.thumbnail_panel.clear_selection()
+            self.ref_bar.clear_selection()       # → _on_refs_changed → 질환 아이콘도 꺼짐
+        self.dx_bar.set_active(None)
+        if self._single_frozen and not self._quad:
+            self._on_freeze()                    # 정지 화면이면 라이브로
+        if self._mode != "capture":
+            self.set_mode("capture")
+        self.events.log("capture_reset", where=where)
+        self.control_bar.set_status("초기화 — 라이브")
+        self.statusBar().showMessage("초기화 — 라이브 촬영 화면 (캡처를 한 번 더 누르면 촬영합니다)", 3000)
+        self._focus_capture_view()
 
     def _on_capture_viewer_closed(self, dlg, cap, code: int) -> None:
         if self._capture_viewer is dlg:
             self._capture_viewer = None
         if code == ImageViewerDialog.Deleted:
             self._delete_capture(cap)
+            if self._multi:                       # 지운 사진이 멀티 칸에 남지 않게
+                items = self._multi_items()
+                if items:
+                    self.multi_pro.set_grid(items)
+                else:
+                    self._exit_multi(clear=False)
         if self._mode == "capture":
             self._focus_capture_view()
 
@@ -1247,14 +1292,6 @@ class MainWindow(QMainWindow):
         return True
 
     # ---- Pro 모드 ----
-    def _set_ref_bar_visible(self, on: bool, save: bool = True) -> None:
-        """참조 줄 보이기/숨기기 — 숨겨도 고른 참조 사진은 멀티 화면에 그대로 있다."""
-        self.config.ref_bar_visible = bool(on)
-        self.ref_bar.setVisible(bool(on) and not self._fullscreen)
-        self.control_bar.set_refs_visible(bool(on))
-        if save:
-            self._save_config_quietly()
-
     def _set_smart_bar_visible(self, on: bool, save: bool = True) -> None:
         """Smart 도구줄 보이기/숨기기 — 숨겨도 자동 촬영·피킹 설정은 그대로 동작한다."""
         self.config.smart_bar_visible = bool(on)
@@ -1266,20 +1303,16 @@ class MainWindow(QMainWindow):
             except Exception:  # noqa: BLE001
                 log.warning("smart bar visibility save failed", exc_info=True)
 
-    def _on_pro_toggled(self, on: bool) -> None:
-        self.set_mode("pro" if on else "capture")
-
     def set_mode(self, name: str) -> None:
-        """화면 전환: home(아이콘 메뉴) · capture(촬영) · pro(Pro 검토) · exam(검사 기록)."""
+        """화면 전환: home(아이콘 메뉴) · capture(촬영) · exam(검사 기록) · patients(환자 목록).
+
+        pro(Pro 검토)는 v1.20.3 부터 들어가는 버튼 · 메뉴가 없다 (내부용으로만 남김 — Pro 기능은 멀티 화면 안에)."""
         if name not in MODES:
             return
         if self._mode == "exam" and name != "exam":
             self.exam_screen.flush()             # 적던 소견 저장
         self._mode = name
         self.mode_stack.setCurrentIndex(MODES.index(name))
-        self.act_pro.blockSignals(True)
-        self.act_pro.setChecked(name == "pro")
-        self.act_pro.blockSignals(False)
         if hasattr(self, "_shortcut_objs"):
             self._sync_shortcut_scope()
         p = self._current_patient
@@ -1298,7 +1331,7 @@ class MainWindow(QMainWindow):
             self.patient_list.reload()
             self.patient_list.set_current(p.id if p else None)
             self.patient_list.search.setFocus()
-        # 화면 버튼(홈 · 촬영 · Pro 검토 · 검사 기록 · 환자 목록) 중 지금 화면이 켜짐
+        # 화면 버튼(홈 · 촬영 · 검사 기록 · 환자 목록) 중 지금 화면이 켜짐
         self.mode_buttons.get(name, self.btn_mode_home).setChecked(True)
         self.statusBar().showMessage({"home": "홈", "capture": "촬영", "pro": "Pro 모드", "exam": "검사 기록",
                                       "patients": "환자 목록"}[name], 3000)
@@ -1330,7 +1363,7 @@ class MainWindow(QMainWindow):
                 self.set_mode("capture")
         elif aid == "patients":
             self.set_mode("patients")
-        elif aid in ("capture", "pro", "exam"):
+        elif aid in ("capture", "exam"):
             self.set_mode(aid)
         elif aid == "settings":
             self._open_settings()
@@ -1463,7 +1496,7 @@ class MainWindow(QMainWindow):
 
     # ---- 멀티 (고른 사진 + 참조 사진 한 번에 보기 · Pro 메뉴로 편집 · 분석) ----
     def _multi_items(self) -> list:
-        """멀티 칸에 놓을 것: 오른쪽 목록에서 고른 사진(고른 순서) → 참조 줄에서 고른 참조 사진."""
+        """멀티 칸에 놓을 것: 오른쪽 목록에서 고른 사진(고른 순서) → 질환 아이콘으로 고른 참조 사진 (숨긴 참조 선택 모델 ref_bar)."""
         return self.thumbnail_panel.selected_captures() + [ref_capture(r) for r in self.ref_bar.selected_refs()]
 
     def _on_selection_changed(self, caps: list) -> None:
@@ -1482,7 +1515,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"{len(caps)}장 선택 · 사진 위에서 오른쪽 클릭 → 전송 · 삭제 · 멀티", 4000)
 
     def _on_refs_changed(self, refs: list) -> None:
-        """참조 줄에서 고르면 바로 멀티 화면에 같이 (지금 환자 사진은 오른쪽 목록에서 고른 것)."""
+        """질환 아이콘으로 참조 사진을 고르거나 빼면 바로 멀티 화면에 같이 (지금 환자 사진은 오른쪽 목록에서 고른 것)."""
         if not refs:
             self.dx_bar.set_active(None)          # 참조 사진을 다 빼면 상단 질환 아이콘도 꺼짐
         items = self._multi_items()
@@ -1504,7 +1537,7 @@ class MainWindow(QMainWindow):
         items = self._multi_items()
         if not items:
             self.control_bar.set_multi_mode(False)
-            self.statusBar().showMessage("오른쪽 사진 목록에서 사진을 한 번씩 눌러 고르거나 아래 '참조' 줄에서 "
+            self.statusBar().showMessage("오른쪽 사진 목록에서 사진을 한 번씩 눌러 고르거나 위 질환 아이콘으로 "
                                          "참조 사진을 고른 뒤 '멀티'를 누르세요", 5000)
             return
         self._enter_multi(items)
@@ -1637,11 +1670,8 @@ class MainWindow(QMainWindow):
 
     # ---- 전송 (폴더 · 클라우드 · PACS) ----
     def _on_send(self):
-        """고른 사진 전송. 보냈으면 SendResult, 그만두었으면 None."""
-        from app.services import send_service as ss
-        from app.ui.send_dialog import SendDialog
-        p = self._current_patient
-        if p is None:
+        """오른쪽 목록에서 고른 사진 전송 (촬영 도크 '전송' · 오른쪽 클릭 메뉴). 보냈으면 SendResult, 그만두었으면 None."""
+        if self._current_patient is None:
             QMessageBox.information(self, "전송", "환자를 먼저 선택하세요.")
             return None
         caps = self.thumbnail_panel.selected_captures()
@@ -1649,7 +1679,26 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "전송", "오른쪽 사진 목록에서 보낼 사진을 한 번씩 눌러 고른 뒤 "
                                     "사진 위에서 오른쪽 클릭 → '전송' 을 누르세요.")
             return None
-        dlg = SendDialog(self.config, len(caps), self)
+        return self._send_captures(caps)
+
+    def _send_captures(self, caps: list, parent=None):
+        """caps(사진 목록)를 전송 창(방법 · 형식) → send_service.send 로 보낸다. 보냈으면 SendResult, 그만두었으면 None.
+        parent: 안내 창을 띄울 창 (촬영 직후 큰 화면에서 보낼 때는 그 창 — 뒤에 가려지지 않게)."""
+        from app.services import send_service as ss
+        from app.ui.send_dialog import SendDialog
+        parent = parent or self
+        p = self._current_patient
+        caps = list(caps or [])
+        pids = {c.patient_id for c in caps}
+        if len(pids) == 1 and (p is None or p.id not in pids):
+            # 보기 창이 떠 있는 동안 다른 환자로 바꿨어도 그 사진의 환자 이름 · 차트번호로 보낸다 (PACS 환자 정보)
+            p = self.db.patients.get(next(iter(pids))) or p
+        if p is None:
+            QMessageBox.information(parent, "전송", "환자를 먼저 선택하세요.")
+            return None
+        if not caps:
+            return None
+        dlg = SendDialog(self.config, len(caps), parent)
         if not dlg.exec():
             return None
         formats = dlg.selected_formats()
@@ -1663,7 +1712,7 @@ class MainWindow(QMainWindow):
             QApplication.restoreOverrideCursor()
         self.events.log("send", method=self.config.send_method, count=len(caps), sent=len(res.sent))
         box = QMessageBox(QMessageBox.Icon.Information if res.ok else QMessageBox.Icon.Warning, "전송",
-                          res.summary(), QMessageBox.StandardButton.Ok, self)
+                          res.summary(), QMessageBox.StandardButton.Ok, parent)
         folder = None
         if self.config.send_method in ("folder", "cloud") and res.sent:
             folder = os.path.dirname(res.sent[0])
@@ -1675,6 +1724,33 @@ class MainWindow(QMainWindow):
         if b_open is not None and box.clickedButton() is b_open and folder:
             from app.ui.image_viewer import open_in_default_player
             open_in_default_player(folder)
+        return res
+
+    def _send_from_viewer(self, dlg, cap, delete: bool = False):
+        """촬영 직후 큰 화면의 '전송' · '전송(삭제)' — 그 사진 1장을 보낸다.
+        전송(삭제)는 모두 보냈을 때만 확인 후 이 PC 에서 지우고 창을 닫는다 (오른쪽 목록 갱신). SendResult | None."""
+        title = "전송(삭제)" if delete else "전송"
+        log.info("버튼: 보기 창 %s", title)
+        res = self._send_captures([cap], parent=dlg)
+        if res is None:
+            return None
+        if res.ok and not res.skipped:
+            dlg.mark_sent()
+        if not delete:
+            self.statusBar().showMessage(f"전송: {len(res.sent)}개 보냄" if res.ok else "전송: 모두 보내지 못했습니다", 4000)
+            return res
+        if not res.ok or res.skipped:
+            QMessageBox.warning(dlg, title, "모두 보내지 못해 이 PC 의 사진은 지우지 않았습니다.\n\n" + res.summary())
+            return res
+        ret = QMessageBox.question(
+            dlg, title,
+            "보낸 사진을 이 PC 에서 삭제하시겠습니까?\n\n"
+            "DB 기록과 저장된 파일(썸네일 포함)이 지워지며 되돌릴 수 없습니다.\n"
+            "(지정 폴더에 복사된 사본은 남겨 둡니다)",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if ret == QMessageBox.StandardButton.Yes:
+            dlg.done(ImageViewerDialog.Deleted)       # → _on_capture_viewer_closed → _delete_capture (목록 갱신)
         return res
 
     def _write_send_pdf(self, path: str, patient, items: list, notes: str) -> None:
@@ -1691,6 +1767,9 @@ class MainWindow(QMainWindow):
         self.control_bar.set_status("4분할 초기화")
 
     def _on_capture(self) -> None:
+        if self._multi and self._capture_resets():
+            self._reset_capture_view("multi")    # 멀티 화면에서 캡처 = 초기화 (설정 '보기 · 멀티 화면에서 캡처')
+            return
         if self._current_patient is None:
             QMessageBox.information(self, "확인", "환자를 먼저 선택하세요.")
             return
@@ -2330,6 +2409,7 @@ class MainWindow(QMainWindow):
             "camera": lambda: self._restart_camera(),
             "shortcuts": lambda parent: self._open_shortcuts(parent),
             "samples": lambda parent: self._import_samples(parent),
+            "references": self._safe("참조 라이브러리", lambda: self.open_references()),
             "camera_props": lambda props: self._send_camera_props(props),
         })
         if tab:
@@ -2417,8 +2497,10 @@ class MainWindow(QMainWindow):
                                      on_register=lambda parent: self._register_reference(cap, parent),
                                      on_save_screen=lambda img, note: self._save_reference_screen(img, note, cap))
         dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
-        dlg.finished.connect(lambda *_: (self.ref_bar.refresh(), self._refresh_dx_bar()))   # 등록 · 삭제 · 샘플 → 참조 줄 · 질환 아이콘
+        dlg.finished.connect(lambda *_: (self.ref_bar.refresh(), self._refresh_dx_bar()))   # 등록 · 삭제 · 샘플 → 참조 선택 모델 · 질환 아이콘
         dlg.show()
+        dlg.raise_()                                   # 설정 창을 닫고 열 때 메인 창 뒤에 숨지 않게 (맥)
+        dlg.activateWindow()
         self._refs_dialog = dlg
         return dlg
 
@@ -2487,8 +2569,8 @@ class MainWindow(QMainWindow):
         self._refresh_dx_bar()
         QMessageBox.information(
             parent, "샘플 사진",
-            result.summary() + "\n\n환자 목록에서 '샘플 · 질환명' 환자를 고르거나, 아래 촬영 도크의 '참조' 줄에서 "
-            "질환별로 골라 멀티 화면에서 지금 환자 사진과 같이 볼 수 있습니다.")
+            result.summary() + "\n\n환자 목록에서 '샘플 · 질환명' 환자를 고르거나, 상단의 질환 아이콘을 눌러 "
+            "멀티 화면에서 지금 환자 사진과 같이 볼 수 있습니다.")
         return True
 
     # ---- 종료 ----

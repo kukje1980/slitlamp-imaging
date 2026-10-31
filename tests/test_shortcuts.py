@@ -58,12 +58,13 @@ def test_keys_drive_actions(qapp, win):
     QTest.keyClick(win, Qt.Key.Key_Q)
     assert win.control_bar.btn_quad.isChecked()
     QTest.keyClick(win, Qt.Key.Key_Q)
-    QTest.keyClick(win, Qt.Key.Key_F2)                        # Pro 로 전환 → 촬영 전용 키는 꺼짐
-    assert win.mode_stack.currentIndex() == 1
+    QTest.keyClick(win, Qt.Key.Key_F2)                        # v1.20.3: F2(촬영 ↔ Pro 검토)는 촬영 앱에서 없앰
+    assert win.mode_stack.currentIndex() == 0 and "mode" not in win._shortcut_objs
+    win.set_mode("exam")                                      # 다른 화면 → 촬영 전용 키는 꺼짐 · 안구 키는 그대로
     assert not win._shortcut_objs["capture"].isEnabled() and win._shortcut_objs["eyeOD"].isEnabled()
-    QTest.keyClick(win, Qt.Key.Key_1)                         # Pro 에서도 안구 선택
-    assert win.pro.current_eye() == "OD"
-    QTest.keyClick(win, Qt.Key.Key_F2)
+    QTest.keyClick(win, Qt.Key.Key_1)
+    assert win.control_bar.current_eye() == "OD"
+    win.set_mode("capture")
     assert win.mode_stack.currentIndex() == 0
 
 

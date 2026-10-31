@@ -7,7 +7,10 @@
 실제 삭제(DB·파일)는 호출한 쪽(메인 창)이 수행한다.
 
 after_capture=True: 사진을 찍은 직후 자동으로 뜨는 큰 화면. '다시 촬영'(Esc · Enter)을 누르면 닫히고 촬영 화면으로
-돌아간다. capture_keys 로 준 촬영 단축키를 누르면 retakeRequested 가 나가 메인 창이 창을 닫고 바로 다시 찍는다.
+돌아간다. capture_keys 로 준 촬영 단축키를 누르면 retakeRequested 가 나가 메인 창이 창을 닫고 초기화(기본 —
+라이브 촬영 화면) 또는 바로 다시 찍는다 (설정 → 일반 '보기 · 멀티 화면에서 캡처', config.capture_in_view).
+아래쪽 '전송' · '전송(삭제)' 를 누르면 sendRequested · sendDeleteRequested 가 나가 메인 창이 이 사진 1장을 보낸다
+(전송(삭제)는 모두 보냈을 때만 확인 후 이 PC 에서 지우고 창을 닫음).
 """
 from __future__ import annotations
 
@@ -59,7 +62,9 @@ def _load_bgr(path: str):
 
 class ImageViewerDialog(QDialog):
     Deleted = 2  # exec() 반환값: 사용자가 '삭제'를 확인함
-    retakeRequested = Signal()   # 촬영 뒤 보기 창에서 촬영 단축키를 누름 → 닫고 바로 다시 찍기
+    retakeRequested = Signal()   # 촬영 뒤 보기 창에서 촬영 단축키를 누름 → 닫고 초기화 (설정에 따라 바로 다시 찍기)
+    sendRequested = Signal()     # 촬영 뒤 보기 창의 '전송' — 이 사진 1장
+    sendDeleteRequested = Signal()  # '전송(삭제)' — 보낸 뒤 이 PC 에서 삭제 (모두 보냈을 때만, 확인 후)
     dxClicked = Signal(str, str)  # 질환 아이콘 (source, 분류) — 메인 창이 이 사진과 그 질환 샘플을 멀티 화면에
 
     def __init__(self, capture, parent=None, allow_delete: bool = True, after_capture: bool = False,
@@ -68,6 +73,8 @@ class ImageViewerDialog(QDialog):
         self.capture = capture
         self.after_capture = bool(after_capture)
         self.b_retake = None
+        self.b_send = None
+        self.b_send_delete = None
         self.dx_bar = None
         self.setWindowTitle((f"촬영한 사진 - {capture.captured_at}" if after_capture else f"보기 - {capture.captured_at}"))
         self.resize(920, 720)
@@ -163,6 +170,28 @@ class ImageViewerDialog(QDialog):
         b_close.clicked.connect(self.accept)
         foot.addWidget(self.b_delete)
         foot.addStretch(1)
+        if self.after_capture and self.capture.media_type != "video":
+            # 촬영 직후 화면에서 바로 전송 (이 사진 1장 — 방법 · 형식은 설정 → 전송)
+            self.b_send = QPushButton(icons.gap("전송"))
+            self.b_send.setIcon(icons.icon("send", ICON, 18))
+            self.b_send.setIconSize(QSize(18, 18))
+            self.b_send.setMinimumHeight(40)
+            self.b_send.setToolTip("이 사진을 폴더 · 클라우드 · PACS(DICOM) 로 보내기 (방법 · 형식은 설정 → 전송)")
+            self.b_send.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            self.b_send.clicked.connect(lambda: self.sendRequested.emit())
+            self.b_send_delete = QPushButton(icons.gap("전송(삭제)"))
+            self.b_send_delete.setIcon(icons.icon("send", "#ef4f4c", 18))
+            self.b_send_delete.setIconSize(QSize(18, 18))
+            self.b_send_delete.setMinimumHeight(40)
+            self.b_send_delete.setToolTip("이 사진을 보낸 뒤 이 PC 에서 삭제 — 모두 보냈을 때만, 확인 후 (창이 닫힙니다)")
+            self.b_send_delete.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            self.b_send_delete.clicked.connect(lambda: self.sendDeleteRequested.emit())
+            self.lbl_sent = QLabel("")
+            self.lbl_sent.setObjectName("Muted")
+            foot.addWidget(self.lbl_sent)
+            foot.addWidget(self.b_send)
+            foot.addWidget(self.b_send_delete)
+            foot.addSpacing(12)
         if self.after_capture:
             # 촬영 직후 화면: 큰 버튼 하나로 촬영 화면 복귀 (Enter · Esc 도 같음)
             self.b_retake = QPushButton(icons.gap("다시 촬영"))
@@ -170,7 +199,8 @@ class ImageViewerDialog(QDialog):
             self.b_retake.setIcon(icons.icon("camera", ICON_ON_ACCENT, 18))
             self.b_retake.setIconSize(QSize(18, 18))
             self.b_retake.setMinimumHeight(40)
-            self.b_retake.setToolTip("촬영 화면으로 돌아가기 (Enter · Esc) — 촬영 단축키 · USB 버튼을 누르면 바로 다시 찍습니다")
+            self.b_retake.setToolTip("촬영 화면으로 돌아가기 (Enter · Esc) — 촬영 단축키 · USB 사진 버튼을 누르면 초기화 "
+                                     "(설정 → 일반 '보기 · 멀티 화면에서 캡처' 에서 '바로 촬영' 으로 바꿀 수 있음)")
             self.b_retake.setDefault(True)
             self.b_retake.clicked.connect(self.accept)
             foot.addWidget(self.b_retake)
@@ -178,6 +208,11 @@ class ImageViewerDialog(QDialog):
             b_close.setDefault(True)
         foot.addWidget(b_close)
         return foot
+
+    def mark_sent(self) -> None:
+        """전송을 마쳤다는 표시 (같은 사진을 두 번 보내지 않게 눈으로 확인)."""
+        if getattr(self, "lbl_sent", None) is not None:
+            self.lbl_sent.setText("✓ 보냄")
 
     def _confirm_delete(self) -> None:
         kind = "동영상" if self.capture.media_type == "video" else "사진"

@@ -1,12 +1,13 @@
 """설정 다이얼로그.
 
-위쪽 '바로 실행' 줄: 카메라 다시 연결 · 단축키 설정 · 샘플 사진 가져오기 (main_window 가 actions 로 넘겨 줌).
+위쪽 '바로 실행' 줄: 카메라 다시 연결 · 단축키 설정 · 샘플 사진 가져오기 · 참조 영상 라이브러리
+(main_window 가 actions 로 넘겨 줌).
 그 아래: 화면 테마 · 시작 화면 · Smart 도구줄 · 소스 모드 · 카메라 · 해상도 · 사진 형식 · 저장 폴더 · 효과음 · AI 에이전트.
 'USB 버튼' 탭: 슬릿램프 USB 버튼의 키 조합 · 기능 (app/ui/usb_buttons_tab.py).
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QSize, Qt, QTimer
 from PySide6.QtWidgets import (
     QFrame,
     QCheckBox,
@@ -43,8 +44,9 @@ _THEMES = [("dark", "어두운 화면"), ("light", "밝은 화면")]
 
 
 class SettingsDialog(QDialog):
-    def __init__(self, config, parent=None, actions: dict | None = None):
-        """actions: {"camera": 함수, "shortcuts": 함수(parent), "samples": 함수(parent)} — 없으면 그 버튼은 꺼짐."""
+    def __init__(self, config, parent=None, actions: dict | None = None, standard: bool = True):
+        """actions: {"camera": 함수, "shortcuts": 함수(parent), "samples": 함수(parent), "references": 함수()}
+        — 없으면 그 버튼은 꺼짐. "references" 는 이 설정 창을 닫은 뒤 부른다 (라이브러리 창이 모달 설정 창에 막히지 않게)."""
         super().__init__(parent)
         self.config = config
         self._actions = actions or {}
@@ -58,8 +60,16 @@ class SettingsDialog(QDialog):
         self.btn_shortcuts = self._quick("단축키 설정", "keyboard", "사진 캡처·녹화·안구 선택 등의 키를 바꿉니다", "shortcuts")
         self.btn_samples = self._quick("샘플 사진 가져오기", "image",
                                        "받아 둔 질환별 샘플 사진 폴더를 골라 샘플 환자로 등록합니다", "samples")
-        for b in (self.btn_camera, self.btn_shortcuts, self.btn_samples):
+        # v1.20.3: 화면 아래 참조 줄을 없애 라이브러리 입구를 여기로 (등록 · 정보 수정 · 샘플 · 지금 환자 사진과 비교)
+        self.btn_references = self._quick("참조 영상 라이브러리", "image",
+                                          "참조 영상 라이브러리 — 등록 · 정보 수정 · 샘플 사진 · 지금 환자 사진과 나란히 비교\n"
+                                          "(설정 창을 닫고 엽니다 — 여기서 바꾼 설정은 저장되지 않으니 먼저 '확인'을 누르세요)",
+                                          "references")
+        for b in (self.btn_camera, self.btn_shortcuts, self.btn_samples, self.btn_references):
             quick.addWidget(b)
+        # standard=False (Explorer 판): 참조 라이브러리는 메뉴에 따로 있고, 촬영 직후 보기 · 멀티 캡처 설정은 쓰지 않음
+        if not standard:
+            self.btn_references.hide()
         quick.addStretch(1)
         self.quick_status = QLabel("")
         self.quick_status.setObjectName("Muted")
@@ -99,6 +109,13 @@ class SettingsDialog(QDialog):
         self.live_multi.setChecked(bool(getattr(config, "live_multi", False)))
         self.view_after = QCheckBox("사진을 찍으면 큰 화면으로 바로 보기 ('다시 촬영' · 촬영 키 · USB 버튼으로 돌아오기)")
         self.view_after.setChecked(bool(getattr(config, "view_after_capture", True)))
+        self.capture_in_view = QComboBox()
+        self.capture_in_view.addItem("초기화 — 창 · 멀티를 닫고 선택을 비워 라이브 촬영 화면으로 (사진은 찍지 않음)", "reset")
+        self.capture_in_view.addItem("바로 촬영 — 사진을 바로 다시 찍기 (예전 방식)", "capture")
+        self.capture_in_view.setCurrentIndex(
+            max(0, self.capture_in_view.findData(getattr(config, "capture_in_view", "reset"))))
+        self.capture_in_view.setToolTip("촬영 직후 큰 화면이나 멀티 화면에서 촬영 버튼 · 촬영 단축키 · "
+                                        "슬릿램프 USB 사진 버튼을 눌렀을 때")
         self.split_count = QComboBox()
         for n in (2, 4, 6, 8, 16):
             self.split_count.addItem(f"{n}분할", n)
@@ -233,6 +250,11 @@ class SettingsDialog(QDialog):
         gform.addRow("시작 화면", self.start_home)
         gform.addRow("Smart 도구줄", self.smart_visible)
         gform.addRow("촬영 후 보기", self.view_after)
+        if standard:
+            gform.addRow("보기 · 멀티 화면에서 캡처", self.capture_in_view)
+        else:
+            self.capture_in_view.setParent(self)
+            self.capture_in_view.hide()
         gform.addRow("사진 목록", self.split_eyes)
         gform.addRow("사진 오른쪽 클릭", self.right_click)
         gform.addRow("메뉴 항목", self.menu_items_w)
@@ -700,6 +722,10 @@ class SettingsDialog(QDialog):
         if key == "camera":
             fn()
             self.quick_status.setText("카메라를 다시 연결했습니다.")
+        elif key == "references":
+            # 설정(모달)을 먼저 닫고, 창이 닫힌 다음에 라이브러리를 연다 (모달에 막혀 누를 수 없는 창이 되지 않게)
+            self.reject()
+            QTimer.singleShot(0, fn)
         else:
             fn(self)                          # 단축키 창 · 폴더 선택 창은 이 설정 창 위에 뜬다
 
@@ -777,6 +803,7 @@ class SettingsDialog(QDialog):
         c.start_screen = "home" if self.start_home.isChecked() else "capture"
         c.smart_bar_visible = self.smart_visible.isChecked()
         c.view_after_capture = self.view_after.isChecked()
+        c.capture_in_view = self.capture_in_view.currentData() or "reset"
         c.live_multi = self.live_multi.isChecked()
         c.right_click_action = self.right_click.currentData() or "menu"
         c.right_click_items = [k for k, cb in self.menu_items.items() if cb.isChecked()] or ["send", "multi", "delete"]

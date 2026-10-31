@@ -21,6 +21,9 @@ ACTIONS: list[tuple[str, str, str, str]] = [
     ("patients", "환자 목록", "L", "all"),
     ("newPatient", "신규 환자", "N", "all"),
 ]
+# 기본(촬영) 앱에서는 쓰지 않는 동작 — 단축키를 걸지 않고 단축키 설정 창에도 보이지 않는다 (저장된 값은 그대로 둠).
+# "mode" 는 v1.20.3 에서 Pro 검토 화면 입구를 없애 촬영 앱에서는 쓸 곳이 없다 (Explorer 판은 F2 라이브 ↔ 영상 전환으로 계속 씀).
+HIDDEN_IN_STANDARD = frozenset({"mode"})
 # 화면 안에서 이미 쓰는 키 (Pro: ←/→ 이동, Ctrl+Z/Y 실행 취소, Esc 도구 해제)
 RESERVED = {"Esc", "Escape", "Left", "Right", "Ctrl+Z", "Ctrl+Y", "Ctrl+Shift+Z", "Tab"}
 

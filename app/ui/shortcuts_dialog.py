@@ -19,10 +19,13 @@ from app import shortcuts, usb_buttons
 
 
 class ShortcutsDialog(QDialog):
-    def __init__(self, keys: dict[str, str], parent=None, taken: dict[str, str] | None = None):
-        """taken: {키: 쓰는 곳} — 슬릿램프 USB 버튼처럼 이미 쓰는 키 (같은 키는 지정할 수 없음)."""
+    def __init__(self, keys: dict[str, str], parent=None, taken: dict[str, str] | None = None,
+                 hidden=()):
+        """taken: {키: 쓰는 곳} — 슬릿램프 USB 버튼처럼 이미 쓰는 키 (같은 키는 지정할 수 없음).
+        hidden: 이 창에 보이지 않을 동작 id (그 앱에서 쓰지 않는 동작 — values() 에도 들어가지 않음)."""
         super().__init__(parent)
         self._taken = dict(taken or {})
+        self._hidden = frozenset(hidden or ())
         self.setWindowTitle("단축키 설정")
         self.resize(520, 560)
         self.edits: dict[str, QKeySequenceEdit] = {}
@@ -37,7 +40,8 @@ class ShortcutsDialog(QDialog):
         grid_w = QWidget()
         grid = QGridLayout(grid_w)
         grid.setColumnStretch(1, 1)
-        for row, (aid, name, _default, scope) in enumerate(shortcuts.ACTIONS):
+        rows = [a for a in shortcuts.ACTIONS if a[0] not in self._hidden]
+        for row, (aid, name, _default, scope) in enumerate(rows):
             lbl = QLabel(f"{name}  <span style='color:#8b95a3;font-size:11px'>"
                          f"({'촬영 화면' if scope == 'capture' else '모든 화면'})</span>")
             lbl.setTextFormat(Qt.TextFormat.RichText)
@@ -63,6 +67,8 @@ class ShortcutsDialog(QDialog):
 
     def _reset(self) -> None:
         for aid, key in shortcuts.defaults().items():
+            if aid not in self.edits:
+                continue
             self.edits[aid].setKeySequence(QKeySequence(key))
 
     def values(self) -> dict[str, str]:

@@ -150,3 +150,42 @@ def test_start_screen_capture_skips_home(qapp, app_env):
         w.close()
         w.deleteLater()
         qapp.processEvents()
+
+
+def test_delete_day_from_thumbnail_panel_and_exam_screen(qapp, app_env):
+    """촬영일 제목 줄의 삭제 버튼(썸네일) · '날짜 삭제'(검사 기록) → 메인 창이 그 날 영상만 모두 지운다."""
+    config, db = app_env
+    config.source_mode = "synthetic"
+    config.start_screen = "capture"
+    config.save = lambda: None
+    p, (c1, c2) = _patient_with_days(config, db)
+    today = c1.captured_at[:10]
+    from app.ui.main_window import MainWindow
+    w = MainWindow(config, db)
+    try:
+        w._on_patient_changed(p)
+        panel = w.thumbnail_panel
+        assert set(panel.day_delete_buttons) == {today, "2025-01-05"}         # 촬영일마다 삭제 버튼
+        assert "2장 모두 삭제" in panel.day_delete_buttons[today].toolTip()
+
+        # 검사 기록 화면: 날짜 선택 → '날짜 삭제' 는 그 날짜로 요청
+        w.set_mode("exam")
+        got = []
+        w.exam_screen.deleteDay.disconnect(w._delete_day)                        # 메인 창의 확인 창 대신 신호만 받는다
+        w.exam_screen.deleteDay.connect(got.append)
+        w.exam_screen.day_list.setCurrentRow(1)                                # 2025-01-05
+        w.exam_screen.btn_delete_day.click()
+        assert got == ["2025-01-05"]
+
+        # 실제 삭제 (확인 창 없이): 오늘 2장만 지워지고 다른 날은 남는다
+        assert w._delete_day(today, confirm=False) == 2
+        ids = {c.id for c in db.captures.list_by_patient(p.id)}
+        assert c1.id not in ids and c2.id not in ids and len(ids) == 1
+        assert set(panel.day_delete_buttons) == {"2025-01-05"}
+        assert w.exam_screen.day_list.count() == 1 and w.exam_screen.current_day() == "2025-01-05"
+        assert [c.id for c in w.pro.captures()] == list(ids)                    # Pro 목록도 갱신
+        assert w._delete_day(today, confirm=False) == 0                         # 이미 없음 → 안내만
+    finally:
+        w.close()
+        w.deleteLater()
+        qapp.processEvents()

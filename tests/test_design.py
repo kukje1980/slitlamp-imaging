@@ -5,7 +5,7 @@ from datetime import date
 
 import numpy as np
 import pytest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QPushButton
 
 from app.models.patient import Patient
 from app.services.capture_service import CaptureService
@@ -146,3 +146,23 @@ def test_topbar_has_patient_icon_buttons(qapp, app_env):
         w.close()
         w.deleteLater()
         qapp.processEvents()
+
+
+def test_thumbnail_list_is_paged(qapp, app_env):
+    """촬영본이 수천 장인 환자를 골라도 처음엔 PAGE 장만 그리고 '더 보기'로 이어 본다."""
+    from app.models.capture import Capture
+    from app.ui import thumbnail_panel as tp
+    config, db = app_env
+    pid = db.patients.insert(Patient(chart_no="P1", name="페이징"))
+    for i in range(tp.PAGE * 2 + 10):
+        db.captures.insert(Capture(patient_id=pid, media_type="photo", file_path="/none.png",
+                                   captured_at=f"2026-01-{i // 100 + 1:02d} 10:{i % 60:02d}:00", eye="OD"))
+    panel = tp.ThumbnailPanel(db)
+    panel.set_patient(pid)
+    assert panel.count() == tp.PAGE * 2 + 10 and panel.shown_count() == tp.PAGE
+    btn = panel.findChild(QPushButton, "MoreBtn")
+    assert btn is not None and "더 보기" in btn.text()
+    btn.click()
+    assert panel.shown_count() == tp.PAGE * 2
+    panel.set_filter("OS")                    # 조건에 맞는 영상이 없으면 '더 보기' 도 없음
+    assert panel.findChild(QPushButton, "MoreBtn") is None

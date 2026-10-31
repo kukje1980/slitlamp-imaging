@@ -1,6 +1,7 @@
 """효과음: 음원 파일 · 켜기/끄기 · 백엔드 오류 무시 · 촬영 동작과의 연결."""
 from __future__ import annotations
 
+import io
 import time
 import wave
 
@@ -23,7 +24,7 @@ class FakeBackend:
     def __init__(self, fail=False):
         self.played, self.fail = [], fail
 
-    def play(self, path):
+    def play(self, path, volume=100):
         if self.fail:
             raise RuntimeError("no audio device")
         self.played.append(path.stem)
@@ -159,3 +160,84 @@ def test_capture_actions_play_sounds(qapp, app_env, fake, monkeypatch):
         assert len(fake.played) == n                           # 꺼지면 조용
     finally:
         w.close()
+
+
+# ---------------------------------------------------------------- 음량
+def test_scale_wav_reduces_peak():
+    import wave as _wave
+
+    import numpy as np
+
+    data = sounds.sound_path("shutter").read_bytes()
+    half = sounds.scale_wav(data, 50)
+    assert sounds.scale_wav(data, 100) is data                 # 100% 는 그대로
+    with _wave.open(io.BytesIO(half)) as w, _wave.open(io.BytesIO(data)) as o:
+        assert w.getparams()[:3] == o.getparams()[:3]
+        a = np.abs(np.frombuffer(w.readframes(w.getnframes()), "<i2").astype(int)).max()
+        b = np.abs(np.frombuffer(o.readframes(o.getnframes()), "<i2").astype(int)).max()
+    assert abs(a - b // 2) <= 1
+    with _wave.open(io.BytesIO(sounds.scale_wav(data, 0))) as w:
+        assert max(np.abs(np.frombuffer(w.readframes(w.getnframes()), "<i2"))) == 0
+
+
+def test_scaled_path_caches_copy(app_env, monkeypatch):
+    p = sounds.sound_path("rec_start")
+    assert sounds.scaled_path(p, 100) == p
+    c = sounds.scaled_path(p, 30)
+    assert c != p and c.exists() and c.name == "rec_start_30.wav" and "cache" in str(c)
+    mtime = c.stat().st_mtime
+    assert sounds.scaled_path(p, 30) == c and c.stat().st_mtime == mtime   # 두 번째는 재사용
+
+
+def test_volume_is_passed_to_backend(monkeypatch):
+    class Backend:
+        name = "fake"
+
+        def __init__(self):
+            self.calls = []
+
+        def play(self, path, volume=100):
+            self.calls.append((path.stem, volume))
+
+    b = Backend()
+    monkeypatch.setattr(sounds, "_backend", b)
+    monkeypatch.setattr(sounds, "_enabled", True)
+    sounds.set_volume(35)
+    assert sounds.get_volume() == 35
+    sounds.set_volume(250)
+    assert sounds.get_volume() == 100
+    sounds.set_volume("bad")
+    assert sounds.get_volume() == 100
+    sounds.set_volume(40)
+    assert sounds.play("shutter") and b.calls[-1] == ("shutter", 40)
+    assert sounds.play("freeze", volume=70) and b.calls[-1] == ("freeze", 70)   # 들어보기
+    sounds.set_volume(0)
+    assert sounds.play("shutter") is False and len(b.calls) == 2              # 0 = 무음
+    sounds.set_volume(100)
+    sounds.reset_backend()
+
+
+def test_qt_backend_sets_volume(qapp):
+    pytest.importorskip("PySide6.QtMultimedia")
+    try:
+        b = sounds._QtBackend()
+    except Exception as e:  # noqa: BLE001
+        pytest.skip(f"QtMultimedia 사용 불가: {e}")
+    p = sounds.sound_path("freeze")
+    b.play(p, 25)
+    assert abs(b._effect(p).volume() - 0.25) < 1e-6
+
+
+def test_volume_config_and_settings_dialog(qapp, app_env):
+    from app.config import AppConfig
+    from app.ui.settings_dialog import SettingsDialog
+
+    config, _ = app_env
+    assert config.sound_volume == 100
+    config.source_mode = "synthetic"
+    dlg = SettingsDialog(config)
+    assert dlg.volume.value() == 100 and dlg.volume_label.text() == "100%"
+    dlg.volume.setValue(45)
+    assert dlg.volume_label.text() == "45%"
+    dlg.apply_to_config()
+    assert config.sound_volume == 45 and AppConfig.load().sound_volume == 45

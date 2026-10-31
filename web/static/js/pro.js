@@ -9,6 +9,7 @@
  *  편집     회전·반전·자르기, 텍스트/화살표/원 주석, 길이·각도 측정(mm 눈금 보정), 돋보기,
  *           실행 취소/다시 실행(20단계), 원본 복원
  *  편집본 저장 · 코멘트 · 환자정보 · 인쇄/PDF(A4 보고서)
+ *  삭제     MULTI에서 선택한 영상(최대 2장) / 1화면의 현재 영상을 삭제 (Delete 키)
  *  스마트 · 분석 탭은 smart.js, 참조 탭(부위별 정상/비정상 샘플 비교)은 refs.js
  *  (이 파일의 window.SlitPro 와 'slit:pro-*' 이벤트를 사용)
  *
@@ -714,8 +715,42 @@
       el.textContent = 'LIVE — ' + (P.frozen ? '정지됨 · SAVE로 저장' : '실시간');
     } else el.textContent = '영상이 없습니다';
     $('pro-selinfo').textContent = P.sel.length
-      ? `선택 ${P.sel.length}/2 — 2장이면 '비교'를 누르세요.`
+      ? `선택 ${P.sel.length}/2 — 2장이면 '비교', 지우려면 '삭제'(Delete).`
       : "MULTI에서 영상 2장을 클릭해 선택한 뒤 '비교'를 누르세요.";
+    $('pro-delete').disabled = !deleteTargets().length;
+  }
+
+  // ================= 삭제 =================
+  /** 지금 '삭제'를 누르면 지워질 영상 — MULTI: 선택한 영상, 1화면: 현재 영상 (참조 사진은 제외) */
+  function deleteTargets() {
+    const own = (c) => c && !c.ref;
+    if (P.mode === 'multi') return [...P.sel].sort((a, b) => a - b).map((i) => P.caps[i]).filter(own);
+    if (P.mode === 'single' && own(P.caps[P.idx])) return [P.caps[P.idx]];
+    return [];
+  }
+  let deleting = false;
+  async function deleteSelected(confirmFirst = true) {
+    if (deleting) return 0;
+    const targets = deleteTargets();
+    if (!targets.length) {
+      App.toast('삭제할 영상이 없습니다. MULTI에서 영상을 클릭해 선택하거나 1화면에서 열어 주세요.', 'error');
+      return 0;
+    }
+    const desc = targets.length === 1 ? caption(targets[0]) : `${targets.length}장`;
+    if (confirmFirst && !window.confirm(`선택한 영상 ${desc}을(를) 삭제하시겠습니까?\n\n저장된 파일과 기록이 함께 지워지며 되돌릴 수 없습니다.`)) return 0;
+    deleting = true;
+    let n = 0;
+    try {
+      for (const c of targets) {
+        try { await App.api(`/captures/${c.id}`, { method: 'DELETE' }); n++; }
+        catch (e) { App.toast(`삭제 실패 (${caption(c)}): ${e.message}`, 'error'); }
+      }
+    } finally { deleting = false; }
+    P.sel = [];
+    await reload(false);                                 // 1화면: 같은 자리(다음 영상)를, 끝이었다면 마지막 영상을 표시
+    App.renderThumbs();
+    if (n) App.toast(`영상 ${n}장을 삭제했습니다.`, 'success');
+    return n;
   }
 
   // ================= 모드 =================
@@ -1343,6 +1378,7 @@
   $('pro-per').addEventListener('change', (e) => setPer(e.target.value));
   $('pro-comment').addEventListener('click', editComment);
   $('pro-patient').addEventListener('click', editPatient);
+  $('pro-delete').addEventListener('click', () => deleteSelected());
   $('pro-print').addEventListener('click', doPrint);
   $('mb-enhance').addEventListener('click', mbEnhance);
   $('mb-auto').addEventListener('click', mbRunAuto);
@@ -1376,6 +1412,7 @@
   $('pro-start-camera').addEventListener('click', async () => { await App.startCamera(); attachLive(); });
 
   document.addEventListener('slit:patient', () => { if (P.on) reload(false); });
+  document.addEventListener('slit:captures', () => { if (P.on) reload(false); });   // 기본 화면에서 영상 삭제 등
   document.addEventListener('keydown', (e) => {
     if (!P.on || document.querySelector('dialog[open]')) return;
     const el = e.target instanceof Element ? e.target : null;
@@ -1387,6 +1424,7 @@
     else if (e.key === ' ' && P.mode === 'live') { e.preventDefault(); toggleCapture(); }
     else if (e.key === 'Enter' && V.single.poly) { e.preventDefault(); V.single.finishPoly(); }
     else if (e.key === 'Escape') setTool('pan');
+    else if (e.key === 'Delete' && !ctrl && deleteTargets().length) { e.preventDefault(); deleteSelected(); }
     else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') { e.preventDefault(); (e.shiftKey ? redo : undo)(); }   // 한글 입력 상태에서도
     else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyY') { e.preventDefault(); redo(); }
   });
@@ -1400,7 +1438,7 @@
 
   // 자동화 테스트·디버깅용 핸들
   window.SlitPro = { state: P, viewers: V, setPro, setMode, setPer, openIndex, step, toggleSel, setAdj,
-    setTool, saveEdited, setComment, buildReport, reload, active, autoContrast, rotate, flip, undo, redo,
+    setTool, saveEdited, setComment, deleteSelected, deleteTargets, buildReport, reload, active, autoContrast, rotate, flip, undo, redo,
     original: restoreOriginal, setPxPerMm, clearAnn, setTab, mbRunAuto, mbResult: () => mbResult(V.single), mbSave, mbClear,
     toggleCapture, saveLive, grabVideo, loadImage, caption, prepareCompare, compareImages };
 })();

@@ -18,6 +18,7 @@
     recordStart: 0,
     recordTimer: null,
     editingPatientId: null,
+    viewing: null,       // 보기 창에 열어 둔 영상 (삭제 대상)
     statusResetTimer: null,
     dirHandle: null,     // File System Access API 디렉토리 핸들
     // 4분할
@@ -123,6 +124,16 @@
     $('btn-theme').addEventListener('click', toggleTheme);
     $('btn-sounds').addEventListener('click', () => setSounds(!soundsOn()));
     syncSoundsButton();
+    const vol = $('sound-volume'), volOut = $('sound-volume-out');
+    vol.value = String(window.SlitSounds ? window.SlitSounds.volume() : 100);
+    volOut.textContent = vol.value + '%';
+    vol.addEventListener('input', () => {                      // 끌면서 숫자만 갱신
+      volOut.textContent = vol.value + '%';
+      if (window.SlitSounds) window.SlitSounds.setVolume(vol.value);
+    });
+    vol.addEventListener('change', () => {                     // 놓으면 그 크기로 들려 준다
+      try { if (window.SlitSounds) window.SlitSounds.play('shutter', Number(vol.value)); } catch (_) { /* 무시 */ }
+    });
     $('btn-storage').addEventListener('click', openStorageDialog);
     $('storage-x').addEventListener('click', () => $('storage-dialog').close());
     $('storage-cancel').addEventListener('click', () => $('storage-dialog').close());
@@ -155,6 +166,8 @@
     $('camera-select').addEventListener('change', (e) => { prefSet('slitlamp-cam', e.target.value); startCamera(e.target.value); });
     $('vq-select').value = prefGet('slitlamp-vq') === 'high' ? 'high' : 'normal';
     $('vq-select').addEventListener('change', (e) => prefSet('slitlamp-vq', e.target.value));
+    $('view-after-capture').checked = prefGet('slitlamp-view-after') !== '0';      // 기본: 켬
+    $('view-after-capture').addEventListener('change', (e) => prefSet('slitlamp-view-after', e.target.checked ? '1' : '0'));
     $('res-select').value = prefGet('slitlamp-res') || '1080';
     $('res-select').addEventListener('change', (e) => {
       prefSet('slitlamp-res', e.target.value);
@@ -192,8 +205,16 @@
     });
 
     $('viewer-close').addEventListener('click', () => $('viewer-dialog').close());
-    $('viewer-dialog').addEventListener('close', () => { $('viewer-body').innerHTML = ''; });   // 닫으면 동영상 재생·내려받기 중지
+    $('viewer-dialog').addEventListener('close', () => { $('viewer-body').innerHTML = ''; state.viewing = null; });   // 닫으면 동영상 재생·내려받기 중지
     $('viewer-close-2').addEventListener('click', () => $('viewer-dialog').close());
+    $('viewer-retake').addEventListener('click', () => $('viewer-dialog').close());
+    $('viewer-dialog').addEventListener('keydown', (e) => {
+      if (!$('viewer-dialog').classList.contains('after-capture')) return;
+      if (e.key === 'Enter') { e.preventDefault(); $('viewer-dialog').close(); }
+    });
+    $('viewer-dialog').addEventListener('close', () => $('viewer-dialog').classList.remove('after-capture'));
+    $('viewer-delete').addEventListener('click', deleteViewed);
+    $('viewer-dialog').addEventListener('keydown', (e) => { if (e.key === 'Delete') { e.preventDefault(); deleteViewed(); } });
 
     // 단축키 (사용자 지정 — 단축키 설정 창)
     document.addEventListener('keydown', onShortcutKey);
@@ -258,6 +279,14 @@
   function onShortcutKey(e) {
     if (capturingKey) return;
     if (e.repeat) return;                              // 키·발판을 누르고 있어도 한 번만 실행
+    const vd = $('viewer-dialog');
+    if (vd.open && vd.classList.contains('after-capture') && keyName(e) === keymap.capture) {
+      // 촬영 직후 보기 창에서 촬영 키 → 닫고 바로 다시 찍기
+      e.preventDefault();
+      vd.close();
+      if (!$('btn-capture').disabled) capturePhoto();
+      return;
+    }
     if ((e.target instanceof Element && e.target.matches('input, textarea, select')) || document.querySelector('dialog[open]')) return;
     const name = keyName(e);
     if (!name) return;
@@ -855,7 +884,13 @@
     const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
     if (!blob) return;
     const eye = $('eye-select').value;
-    await persistCapture(patient, 'photo', blob, 'png', eye, null, meibo.on ? `마이봄 ${LID_KO[meibo.lid]}` : null);
+    state.lastSaved = null;
+    const ok = await persistCapture(patient, 'photo', blob, 'png', eye, null, meibo.on ? `마이봄 ${LID_KO[meibo.lid]}` : null);
+    // 찍은 사진을 큰 화면으로 — '다시 촬영' · Enter · Esc 로 촬영 화면, 촬영 키는 닫고 바로 다시 찍기
+    const rec = state.lastSaved;
+    if (ok && rec && rec.url && $('view-after-capture').checked && !document.fullscreenElement && !document.querySelector('dialog[open]')) {
+      openViewer(rec, parseTs(rec.captured_at), { afterCapture: true });
+    }
   }
 
   function toggleRecord() {
@@ -1000,7 +1035,7 @@
         if (durationMs != null) fd.append('duration_ms', String(durationMs));
         if (note) fd.append('note', note);
         fd.append('file', upBlob, upName);
-        await api('/captures', { method: 'POST', body: fd });
+        state.lastSaved = await api('/captures', { method: 'POST', body: fd });
         return true;
       } catch (err) {
         toast((LOCAL_MODE ? '이 PC 저장 실패: ' : '서버 저장 실패: ') + err.message, 'error');
@@ -1224,7 +1259,10 @@
         day = d;
         const h = document.createElement('div');
         h.className = 'thumb-day';
-        h.innerHTML = `<span>${d.replace(/-/g, '.')} (${DOW[ts.getDay()] || ''})</span><span>${perDay[d]}장</span>`;
+        h.innerHTML = `<span>${d.replace(/-/g, '.')} (${DOW[ts.getDay()] || ''})</span><span class="thumb-day-r"><span>${perDay[d]}장</span>`
+          + `<button type="button" class="thumb-day-del" title="${d.replace(/-/g, '.')} 촬영 영상 모두 삭제" aria-label="이 날 영상 모두 삭제"><svg class="ic"><use href="#i-trash"/></svg></button></span>`;
+        const dayCaps = items.filter((x) => (x.captured_at || '').slice(0, 10) === d);     // 필터와 무관하게 그 날 전체
+        h.querySelector('.thumb-day-del').addEventListener('click', (e) => { e.stopPropagation(); deleteDay(d, dayCaps); });
         list.appendChild(h);
       }
       const el = document.createElement('div');
@@ -1251,12 +1289,16 @@
     }
   }
 
-  function openViewer(c, ts) {
+  function openViewer(c, ts, opts = {}) {
     const dlg = $('viewer-dialog');
     const body = $('viewer-body');
     body.innerHTML = '';
+    const after = !!opts.afterCapture;
+    dlg.classList.toggle('after-capture', after);
+    $('viewer-retake').style.display = after ? '' : 'none';      // .btn 의 display 가 hidden 속성을 덮으므로 직접
+    $('viewer-close-2').style.display = after ? 'none' : '';
     const patient = state.patients.find(p => p.id === c.patient_id);
-    $('viewer-title').textContent = `${patient?.name || ''} · ${fmtDT(ts)}${c.eye && c.eye !== 'NA' ? ' · ' + c.eye : ''}`;
+    $('viewer-title').textContent = `${after ? '촬영한 사진 · ' : ''}${patient?.name || ''} · ${fmtDT(ts)}${c.eye && c.eye !== 'NA' ? ' · ' + c.eye : ''}`;
     if (c.media_type === 'photo') {
       const img = document.createElement('img'); img.src = c.url; body.appendChild(img);
     } else {
@@ -1265,7 +1307,51 @@
     const dl = $('viewer-download');
     dl.href = c.url;
     dl.download = c.filename || (c.url.split('/').pop()) || 'capture';
+    state.viewing = c;
     dlg.showModal();
+  }
+
+  /** 촬영일 제목 줄의 삭제 — 그 날 촬영한 사진 · 동영상을 모두 지운다 (검사 소견은 남김) */
+  let deletingDay = false;
+  async function deleteDay(day, caps) {
+    if (deletingDay || !caps || !caps.length) return 0;
+    const nPhoto = caps.filter((c) => c.media_type !== 'video').length, nVideo = caps.length - nPhoto;
+    const what = [nPhoto ? `사진 ${nPhoto}장` : '', nVideo ? `동영상 ${nVideo}개` : ''].filter(Boolean).join(' · ');
+    if (!confirm(`${day.replace(/-/g, '.')} 촬영 영상을 모두 삭제하시겠습니까?\n\n${what} — 저장된 파일과 기록이 함께 지워지며 되돌릴 수 없습니다.\n(그 날의 검사 소견은 남겨 둡니다)`)) return 0;
+    deletingDay = true;
+    let n = 0;
+    try {
+      for (const c of caps) {
+        try { await api(`/captures/${c.id}`, { method: 'DELETE' }); n++; }
+        catch (e) { toast(`삭제 실패 (${fmtDT(parseTs(c.captured_at))}): ${e.message}`, 'error'); }
+      }
+    } finally { deletingDay = false; }
+    await renderThumbs();
+    document.dispatchEvent(new CustomEvent('slit:captures'));     // Pro 화면 목록도 갱신
+    if (n) toast(`${day.replace(/-/g, '.')} 촬영 영상 ${n}장을 삭제했습니다.`, 'success');
+    return n;
+  }
+
+  /** 보기 창에서 '삭제' — 열어 둔 영상 한 건을 DB·파일에서 지우고 목록을 갱신한다 */
+  let deletingViewed = false;
+  async function deleteViewed() {
+    const c = state.viewing;
+    if (!c || deletingViewed) return false;
+    const kind = c.media_type === 'video' ? '동영상' : '사진';
+    if (!confirm(`이 ${kind}(${fmtDT(parseTs(c.captured_at))})을(를) 삭제하시겠습니까?\n\n저장된 파일과 기록이 함께 지워지며 되돌릴 수 없습니다.`)) return false;
+    deletingViewed = true;
+    try {
+      await api(`/captures/${c.id}`, { method: 'DELETE' });
+    } catch (e) {
+      toast('삭제 실패: ' + e.message, 'error');
+      return false;
+    } finally { deletingViewed = false; }
+    state.viewing = null;
+    $('viewer-dialog').close();
+    await renderThumbs();
+    document.dispatchEvent(new CustomEvent('slit:captures'));     // Pro 화면 목록도 갱신
+    toast(`${kind}을(를) 삭제했습니다.`, 'success');
+    return true;
   }
 
   // ---- status / toast ----

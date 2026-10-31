@@ -9,7 +9,7 @@ import os
 
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
-APP_VERSION = "1.19.0"
+APP_VERSION = "1.20.0"
 BRAND = os.environ.get("SLITLAMP_BUILD_BRAND", "default").lower()
 AGENT = os.environ.get("SLITLAMP_BUILD_EDITION", "standard").lower() == "agent"
 # 판별 (앱 이름, 표시 이름, 아이콘, 번들 ID, 런타임 훅)
@@ -52,6 +52,7 @@ datas += [("assets/icons/app.png", "assets/icons")]
 datas += [("assets/brand", "assets/brand")]
 # 효과음 (캡처 찰칵 · 정지영상 · 녹화 삐)
 datas += [("assets/sounds", "assets/sounds")]
+datas += [("assets/samples", "assets/samples")]      # 질환별 샘플 사진 (원본 그대로 · 출처/이용 조건)
 if os.path.isdir("assets/models") and os.listdir("assets/models"):
     datas += [("assets/models", "assets/models")]
 

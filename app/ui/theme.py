@@ -101,6 +101,19 @@ def build_qss(mode: str = "dark") -> str:
     QPushButton#NavBtn:pressed {{ background: {c['raised']}; }}
     QPushButton#NavBtn:checked {{ background: {c['raised']}; border: 1px solid {c['rule_strong']}; }}
 
+    /* 상단바 질환 아이콘 줄 (app/ui/dx_bar.py) */
+    QFrame#DxBar {{ background: {c['bg']}; border: 1px solid {c['rule']}; border-radius: 11px; }}
+    QPushButton#DxBtn {{ background: transparent; border: 1px solid transparent; border-radius: 7px; padding: 0px; min-height: 0px; }}
+    QPushButton#DxBtn:hover {{ background: {c['panel2']}; border-color: {c['rule']}; }}
+    QPushButton#DxBtn:checked {{ background: {c['raised']}; border: 1px solid {c['accent']}; }}
+    QPushButton#DxMenuBtn {{ background: transparent; border: 1px solid transparent; border-radius: 7px; padding: 4px 8px; min-height: 0px; color: {c['ink_soft']}; font-weight: 600; }}
+    QPushButton#DxMenuBtn:hover {{ background: {c['panel2']}; border-color: {c['rule']}; color: {c['ink']}; }}
+    QPushButton#DxMenuBtn::menu-indicator {{ width: 0px; }}
+    /* 멀티 화면 오른쪽 메뉴(보정 · 편집 · 분석) 접기 · 펴기 */
+    QToolButton#ProSideToggle {{ background: {c['panel']}; border: 1px solid {c['rule']}; border-radius: 7px; padding: 0px; }}
+    QToolButton#ProSideToggle:hover {{ background: {c['panel2']}; border-color: {c['rule_strong']}; }}
+    QToolButton#ProSideToggle:checked {{ background: {c['raised']}; }}
+
     /* 아이콘 위 · 이름 아래 버튼(IconTextButton) 안쪽 라벨 */
     QPushButton[iconText="true"] QLabel {{ background: transparent; }}
     QLabel#BtnText {{ color: {c['ink_soft']}; font-size: 11px; font-weight: 600; }}
@@ -127,6 +140,9 @@ def build_qss(mode: str = "dark") -> str:
         border-radius: 9px; padding: 1px 8px; font-size: 11px; font-weight: 700; }}
     QLabel#ThumbTitle {{ font-weight: 700; font-size: 13px; }}
     QLabel#DayHeader {{ color: {c['ink_muted']}; font-size: 11px; font-weight: 700; padding: 6px 2px 0; }}
+    QPushButton#DayDeleteBtn {{ background: transparent; border: 1px solid transparent; border-radius: 6px;
+                               padding: 0; margin-top: 4px; }}
+    QPushButton#DayDeleteBtn:hover {{ background: {c['record_soft']}; border-color: {c['record']}; }}
 
     /* 입력/콤보 */
     QLineEdit, QComboBox, QSpinBox, QPlainTextEdit, QTextEdit, QDateEdit, QDoubleSpinBox {{
@@ -179,6 +195,12 @@ def build_qss(mode: str = "dark") -> str:
     QPushButton#EyeBtn[eye="OD"]:checked {{ color: {c['od']}; border: 1px solid {c['od']}; }}
     QPushButton#EyeBtn[eye="OS"]:checked {{ color: {c['os']}; border: 1px solid {c['os']}; }}
     QPushButton#EyeBtn[eye="OU"]:checked {{ color: {c['ou']}; border: 1px solid {c['ou']}; }}
+    QToolButton#BackupStatus {{ color: {c['ink_soft']}; padding: 1px 8px; border: none; font-weight: 600; }}
+    QToolButton#BackupStatus:hover {{ color: {c['ink']}; }}
+    QToolButton#BackupStatus[level="ok"] {{ color: {'#3ccf7a' if mode == 'dark' else '#15803d'}; }}
+    QToolButton#BackupStatus[level="running"] {{ color: {c['accent']}; }}
+    QToolButton#BackupStatus[level="warn"] {{ color: {'#ffb454' if mode == 'dark' else '#b45309'}; }}
+    QToolButton#BackupStatus[level="error"] {{ color: {c['record']}; }}
     QLabel#EyeStatus {{
         color: {c['ink_soft']}; background: {c['bg']}; border: 1px solid {c['rule']}; border-radius: 8px;
         padding: 2px 7px; min-height: 18px; font-size: 11px; font-weight: 700;
@@ -271,9 +293,14 @@ def build_qss(mode: str = "dark") -> str:
     QFrame#ProToolbar {{ background: {c['panel']}; border: 1px solid {c['rule']}; border-radius: 12px; }}
     QFrame#ProSep {{ background: {c['rule']}; margin: 6px 4px; }}
     QFrame#ProSeg {{ background: {c['bg']}; border: 1px solid {c['rule']}; border-radius: 9px; }}
-    QPushButton#ProBtn, QPushButton#ProCapture, QPushButton#ProGhost, QPushButton#ProPrimary, QPushButton#ProSegBtn {{
+    QPushButton#ProBtn, QPushButton#ProCapture, QPushButton#ProGhost, QPushButton#ProPrimary,
+    QPushButton#ProSegBtn, QPushButton#ProDanger {{
         padding: 6px 11px; font-weight: 600; font-size: 12px; border-radius: 7px;
     }}
+    QPushButton#ProDanger {{ background: transparent; border-color: transparent;
+                             color: {c['record']}; }}
+    QPushButton#ProDanger:hover {{ background: {c['record_soft']}; color: {c['record_hover']}; }}
+    QPushButton#ProDanger:disabled {{ color: {c['disabled']}; }}
     QPushButton#ProSegBtn {{ background: transparent; border: 1px solid transparent; color: {c['ink_soft']}; }}
     QPushButton#ProSegBtn:hover {{ background: {c['panel2']}; color: {c['ink']}; }}
     QPushButton#ProSegBtn:checked, QPushButton#ProBtn:checked {{ background: {c['accent']}; color: {c['accent_ink']}; border-color: {c['accent']}; }}
@@ -456,6 +483,9 @@ def _brand_qss(mode: str = "dark") -> str:
     QFrame#TopBar {{ background: {h['bg']}; border: none; border-bottom: {line}; }}
     QFrame#TopBar QLabel#BrandLogo, QFrame#TopBar QFrame#PatientPick {{ background: transparent; }}
     QFrame#TopBar QFrame#NavSeg {{ background: {h['seg']}; border: 1px solid {h['rule']}; }}
+    QFrame#TopBar QFrame#DxBar {{ background: {h['seg']}; border: 1px solid {h['rule']}; }}
+    QFrame#TopBar QPushButton#DxBtn:hover {{ background: {h['hover']}; border-color: {h['rule']}; }}
+    QFrame#TopBar QPushButton#DxBtn:checked {{ background: {h['active']}; border: 1px solid {h['accent']}; }}
     QFrame#TopBar QPushButton#NavBtn {{ background: transparent; border-color: transparent; }}
     QFrame#TopBar QPushButton#NavBtn:hover {{ background: {h['hover']}; border-color: {h['rule']}; }}
     QFrame#TopBar QPushButton#NavBtn:pressed {{ background: {h['hover']}; }}

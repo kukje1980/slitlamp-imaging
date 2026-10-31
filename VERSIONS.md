@@ -173,3 +173,32 @@ v1.8.0 이후 `main` 에 들어온 변경을 모두 합친 최종판입니다 (`
 - 동영상 화질 `video_quality` normal / high (#45): 앱 CRF 23 / 18 + 해상도별 preset(1080p veryfast · 4K ultrafast), 웹 비트레이트 고정.
 - 설정 → 컴퓨터 사양 탭(#1, `app/system_specs.py`): 최소 · 권장 표, 화질 모드 설명, 이 PC 판정. 웹 설정 → 컴퓨터 사양 설명 창. README 표.
 - 카메라 목록 파서 수정 · 설정 창 카메라 선택 (#28). macOS 최소 버전 14 명시 (`LSMinimumSystemVersion`).
+- **질환별 샘플 사진 기본 포함**: `assets/samples/일반외래_슬릿램프_질환순` (26장 · 11개 질환 · metadata.json, 원본 그대로) 을 설치판에 넣고,
+  처음 실행 때 한 번만 질환별 샘플 환자(SAMPLE-00 ~ 10)로 등록 (`ensure_bundled_samples`, 설정 `bundled_samples`).
+  예전에 '샘플' 로 가져온 사진은 내용 해시로 건너뜀, 지운 샘플은 되살리지 않음. 출처 · 이용 조건: `assets/samples/출처_및_이용조건.txt`
+  (24장 CC BY-NC-ND 3.0 → 비영리 내부 교육 · 참고용 배포 전제).
+- 설정 → 동영상 화질 일반 / 고화질 (앱 H.264 CRF 23 / 18, 해상도에 맞춰 인코더 속도, 웹은 비트레이트 지정).
+
+## v1.19.1 — 2026-10-30
+- **선택 사진 삭제**: Pro 검토 툴바 '삭제' (Delete 키) — MULTI 에서 선택한 영상(최대 2장) / 1화면의 현재 영상.
+  촬영 화면 썸네일 보기 창에도 '삭제' (Delete). 웹 Pro · 보기 창 동일 (참조 사진 제외).
+  DB 기록 + 기본 저장 파일 + 썸네일을 지우고 지정 폴더(export) 사본은 백업으로 남김 (`CaptureService.delete_capture`).
+
+## v1.19.2 — 2026-10-30
+- **촬영일 단위 삭제**: 썸네일 촬영일 제목 줄의 쓰레기통 · 검사 기록 '날짜 삭제' · 웹 날짜 줄 쓰레기통 — 그 날 촬영한
+  사진 · 동영상을 모두 삭제 (`CaptureService.captures_on` / `delete_day`). 검사 소견 · export 사본은 보존.
+
+## v1.20.0 — 2026-10-30
+- **최종 통합판**: 새 저장소 v1.19.0(안전 수정 · 동영상 화질 · 컴퓨터 사양 · 카메라 목록) + 옛 저장소 v1.19.0 ~ v1.19.2 · v1.20.0 을 하나로.
+- **외장 하드 백업**(`app/services/backup_service.py`, 설정 → 백업 · 상태줄 백업 버튼), **효과음 크기**(`config.sound_volume`, 앱 · 웹),
+  **촬영 목록 120장씩 그리기**(`ThumbnailPanel.PAGE`), **USB 버튼 진단 도구**(`tools/usb_buttons_probe.py`).
+- 넣지 않음: 썸네일 오른쪽 클릭 메뉴(`photo-list-select-send`), 끊김 방지 대형 수정 3e96f16(v1.6 기준) — docs/RELEASE-1.20.0.md 참고.
+- **상단 질환 아이콘 줄**(`app/ui/dx_bar.py`): 상단바 환자 검색 오른쪽 빈 공간에 샘플 질환(설치판 11개) + 등록한 참조 분류의 작은 아이콘.
+  누르면 참조 줄을 열어 그 분류를 보이고(`RefBar.show_category`), 그 사진 최대 4장을 고르며(`choose_only_current`),
+  고른 환자 사진이 없으면 가장 최근 사진을 골라 멀티 화면에 같이 놓는다. 다시 누르면 그 질환 사진을 뺌. 참조 사진을 다 빼면 아이콘도 꺼짐.
+  창이 좁아 상단 메뉴가 아이콘만 남으면 '질환 ▾' 메뉴 버튼 하나로. 샘플 가져오기 · 참조 등록 · 라이브러리 창 닫힘 뒤 다시 만든다.
+- **멀티 화면 오른쪽 메뉴(보정 · 편집 · 분석) 접기**: 가는 손잡이(`ProSideToggle`)로 펴고 접음, 기본 접힘 (`config.multi_side_visible`).
+- **촬영 직후 큰 화면 보기**: 사진을 찍으면 보기 창(`ImageViewerDialog(after_capture=True)`)이 최대화로 뜸. '다시 촬영'(Enter · Esc) 으로 촬영 화면 복귀,
+  촬영 단축키(기본 C)는 창을 닫고 바로 다시 찍음(`retakeRequested`), USB 버튼도 창을 닫고 바로 동작(`_usb_context`). 전체 화면에서는 뜨지 않음.
+  설정 → 일반 → '촬영 후 보기' (`config.view_after_capture`, 기본 켬).
+- 웹: 촬영 직후 큰 화면 보기만 같음 (`#viewer-retake`, 촬영 키 = 닫고 다시 찍기, 설정 '촬영 후 보기' `slitlamp-view-after`). 질환 아이콘 · 멀티 메뉴 접기는 앱 전용.

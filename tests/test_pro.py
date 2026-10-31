@@ -207,3 +207,47 @@ def test_pro_side_tabs_all_visible(qapp, app_env):
     ws.tabs.setCurrentIndex(3)                                   # 코드에서 탭을 바꿔도 버튼이 따라감
     assert ws.tab_buttons[3].isChecked()
     ws.close()
+
+
+def test_pro_delete_selected_in_multi_and_single(qapp, app_env):
+    """삭제: MULTI 에서 선택한 영상(최대 2장) / 1화면의 현재 영상을 DB·디스크에서 지운다."""
+    import os
+    ws, db, patient = _workspace(app_env, n=5)
+    caps = ws.captures()
+
+    # MULTI: 선택 없음 → 삭제 대상 없음, 버튼 비활성
+    assert ws.delete_targets() == [] and not ws.b_delete.isEnabled()
+    assert ws.delete_selected(confirm=False) == 0
+    assert len(ws.captures()) == 5
+
+    # MULTI: 1번·3번 선택 → 두 장 삭제 (export 사본은 백업으로 남김)
+    ws.select_for_compare(1, 3)
+    assert [c.id for c in ws.delete_targets()] == [caps[1].id, caps[3].id]
+    assert ws.b_delete.isEnabled()
+    gone = [caps[1], caps[3]]
+    assert ws.delete_selected(confirm=False) == 2
+    remain = ws.captures()
+    assert [c.id for c in remain] == [caps[0].id, caps[2].id, caps[4].id]
+    assert ws.multi.selection() == [] and ws.mode() == "multi"
+    for c in gone:
+        assert db.captures.get(c.id) is None
+        assert not os.path.exists(c.file_path) and not os.path.exists(c.thumbnail_path)
+        assert os.path.exists(c.export_path)
+    assert len(db.captures.list_by_patient(patient.id)) == 3
+
+    # 1화면: 가운데 영상을 열어 삭제 → 다음 영상이 같은 자리에 표시
+    ws.open_index(1)
+    assert ws.delete_targets() == [remain[1]] and ws.b_delete.isEnabled()
+    assert ws.delete_selected(confirm=False) == 1
+    assert ws.mode() == "single" and ws.current_index() == 1
+    assert [c.id for c in ws.captures()] == [caps[0].id, caps[4].id]
+    assert ws.single_canvas.image() is not None
+
+    # 1화면: 마지막 영상을 지우면 그 앞 영상으로
+    ws.step(1)
+    assert ws.delete_selected(confirm=False) == 1
+    assert ws.current_index() == 0 and len(ws.captures()) == 1
+
+    # LIVE 에서는 삭제 대상 없음
+    ws.set_mode("live")
+    assert ws.delete_targets() == [] and not ws.b_delete.isEnabled()

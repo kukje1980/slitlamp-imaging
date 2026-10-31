@@ -148,3 +148,45 @@ def test_system_specs_dialog_wired():
         assert s in body, s
     assert "$('btn-specs').addEventListener" in app_js and "navigator.hardwareConcurrency" in app_js
     assert ".spec-table" in css and ".specs-dialog" in css
+
+
+def test_delete_selected_wired():
+    """선택 사진 삭제: Pro 툴바 '삭제' 버튼 + Delete 키, 보기 창 '삭제' 버튼."""
+    app_js = (WEB / "static/js/app.js").read_text(encoding="utf-8")
+    assert 'id="pro-delete"' in HTML and 'id="viewer-delete"' in HTML
+    assert "function deleteSelected" in PRO_JS and "function deleteTargets" in PRO_JS
+    assert "e.key === 'Delete'" in PRO_JS                          # Pro 화면 Delete 키
+    assert "method: 'DELETE'" in PRO_JS and "method: 'DELETE'" in app_js
+    assert "slit:captures" in PRO_JS and "slit:captures" in app_js  # 기본 화면 삭제 → Pro 목록 갱신
+    assert "function deleteViewed" in app_js
+
+
+def test_delete_day_wired():
+    """촬영일 제목 줄의 쓰레기통 버튼 → 그 날 영상 모두 삭제."""
+    app_js = (WEB / "static/js/app.js").read_text(encoding="utf-8")
+    css = (WEB / "static/css/app.css").read_text(encoding="utf-8")
+    assert "class=\"thumb-day-del\"" in app_js and "function deleteDay" in app_js
+    assert "deleteDay(d, dayCaps)" in app_js                      # 필터와 무관하게 그 날 전체
+    assert ".thumb-day-del" in css
+
+
+def test_after_capture_viewer_wired():
+    """v1.20.0: 사진을 찍으면 큰 화면 보기 창 + '다시 촬영' (설정 '촬영 후 보기', 기본 켬)."""
+    APP_JS = (WEB / "static" / "js" / "app.js").read_text(encoding="utf-8")
+    CSS = (WEB / "static" / "css" / "app.css").read_text(encoding="utf-8")
+    for el in ("viewer-retake", "view-after-capture"):
+        assert f'id="{el}"' in HTML, el
+    assert "openViewer(rec, parseTs(rec.captured_at), { afterCapture: true })" in APP_JS
+    assert "slitlamp-view-after" in APP_JS and "keymap.capture" in APP_JS
+    assert "dialog.viewer-dialog.after-capture" in CSS
+
+
+def test_sound_volume_wired():
+    """효과음 크기 슬라이더: 설정 창 요소 + sounds.js 의 volume/setVolume + 재생 시 GainNode."""
+    APP_JS = (WEB / "static/js/app.js").read_text(encoding="utf-8")
+    SND_JS = (WEB / "static/js/sounds.js").read_text(encoding="utf-8")
+    assert 'id="sound-volume"' in HTML and 'id="sound-volume-out"' in HTML
+    assert "slitlamp-sound-volume" in SND_JS and "createGain" in SND_JS
+    assert "setVolume" in SND_JS and "volume, setVolume" in SND_JS
+    assert "$('sound-volume')" in APP_JS and "SlitSounds.setVolume" in APP_JS
+    assert "play('shutter', Number(vol.value))" in APP_JS       # 놓으면 들려 준다

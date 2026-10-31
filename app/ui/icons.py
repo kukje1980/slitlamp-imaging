@@ -81,6 +81,20 @@ _PATHS = {
     "chev-d": '<path d="M6 9l6 6 6-6"/>',
     "send": '<path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/>',
     "download": '<path d="M12 3v12M7 10l5 5 5-5M4 21h16"/>',
+    # 상단바 질환 아이콘 (app/ui/dx_bar.py) — 눈 모양 위에 소견 위치를 표시
+    "dx-normal": '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    "dx-cataract": '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3.3" fill="currentColor" fill-opacity=".45"/><path d="M12 9.4v5.2M9.4 12h5.2" opacity=".85"/>',
+    "dx-pco": '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="4.2"/><circle cx="12" cy="12" r="2.2" fill="currentColor" fill-opacity=".4"/><path d="M9.2 9.2l5.6 5.6M14.8 9.2l-5.6 5.6" opacity=".7"/>',
+    "dx-pterygium": '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path d="M3 12l6.6-2.5v5z" fill="currentColor" fill-opacity=".55"/>',
+    "dx-conjunctivitis": '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path d="M4.2 10.6l1.2.9-1.2.9 1.2.9M19.8 10.6l-1.2.9 1.2.9-1.2.9M6.4 13.6l1 .7M17.6 13.6l-1 .7M6.6 9.4l.9-.6M17.4 9.4l-.9-.6"/>',
+    "dx-hemorrhage": '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path d="M15.4 9.2c1.8-.5 3.6.3 4.8 1.9-.9 1.6-2.4 2.7-4.3 3-.7-1.5-.9-3.2-.5-4.9z" fill="currentColor" stroke="none"/>',
+    "dx-dryeye": '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><circle cx="9.3" cy="14.8" r=".9" fill="currentColor" stroke="none"/><circle cx="11.2" cy="16.2" r=".9" fill="currentColor" stroke="none"/><circle cx="13.4" cy="16.1" r=".9" fill="currentColor" stroke="none"/><circle cx="15" cy="14.6" r=".9" fill="currentColor" stroke="none"/><circle cx="12.2" cy="14.2" r=".8" fill="currentColor" stroke="none"/>',
+    "dx-keratitis": '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><circle cx="13.8" cy="10.4" r="1.8" fill="currentColor" stroke="none"/><path d="M4.4 10.8l1.2.9-1.2.9M19.6 10.8l-1.2.9 1.2.9"/>',
+    "dx-abrasion": '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path d="M9.2 8.6l1.6 1.9-1 1.4 1.8 1.6-.8 1.5" stroke-width="1.5"/><circle cx="14.6" cy="13.6" r="1.1" fill="currentColor" stroke="none"/>',
+    "dx-blepharitis": '<path d="M2 11.5s3.6-6.5 10-6.5 10 6.5 10 6.5"/><circle cx="12" cy="11.8" r="3"/><path d="M2.5 15c2.7 2.5 5.9 3.8 9.5 3.8s6.8-1.3 9.5-3.8"/><circle cx="6.2" cy="17.4" r=".95" fill="currentColor" stroke="none"/><circle cx="9.6" cy="18.6" r=".95" fill="currentColor" stroke="none"/><circle cx="14.4" cy="18.6" r=".95" fill="currentColor" stroke="none"/><circle cx="17.8" cy="17.4" r=".95" fill="currentColor" stroke="none"/>',
+    "dx-chalazion": '<path d="M2 13c3-5 6.5-7.5 10-7.5S19 8 22 13"/><path d="M9 6.6a3 3 0 016 0" fill="currentColor" fill-opacity=".35"/><circle cx="12" cy="12.8" r="2.8"/><path d="M3 16.5c2.5 2.4 5.5 3.6 9 3.6s6.5-1.2 9-3.6"/>',
+    "dx-uveitis": '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3.4"/><path d="M12 7.2V6.2M12 16.8v1M7.2 12h-1M16.8 12h1M8.6 8.6l-.7-.7M15.4 15.4l.7.7M15.4 8.6l.7-.7M8.6 15.4l-.7.7"/><path d="M10.9 11.4l1.2-1 1.2.8-.2 1.5-1.3.6-1-.9z" fill="currentColor" stroke="none"/>',
+    "dx-pinguecula": '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><ellipse cx="7" cy="12.5" rx="1.6" ry="1.1" fill="currentColor" stroke="none"/>',
 }
 
 _SVG = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{c}" '

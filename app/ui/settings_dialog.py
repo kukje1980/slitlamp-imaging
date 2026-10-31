@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QSlider,
     QSpinBox,
     QTabWidget,
     QVBoxLayout,
@@ -30,9 +31,11 @@ from PySide6.QtWidgets import (
 )
 
 from app import system_specs
+from app import sounds
 from app.capture.frame_utils import device_names, enumerate_devices, is_sony
 from app.ui import icons
 from app.ui.theme import ICON_ACCENT
+from app.ui.backup_tab import BackupTab
 from app.ui.usb_buttons_tab import UsbButtonsTab
 
 
@@ -70,6 +73,8 @@ class SettingsDialog(QDialog):
         self.start_home.setChecked(getattr(config, "start_screen", "home") != "capture")
         self.smart_visible = QCheckBox("촬영 화면에 Smart 도구줄 보이기")
         self.smart_visible.setChecked(bool(getattr(config, "smart_bar_visible", True)))
+        self.view_after = QCheckBox("사진을 찍으면 큰 화면으로 바로 보기 ('다시 촬영' · 촬영 키 · USB 버튼으로 돌아오기)")
+        self.view_after.setChecked(bool(getattr(config, "view_after_capture", True)))
         self.split_count = QComboBox()
         for n in (2, 4, 6, 8, 16):
             self.split_count.addItem(f"{n}분할", n)
@@ -148,6 +153,27 @@ class SettingsDialog(QDialog):
 
         self.sounds = QCheckBox("사진 캡처 찰칵 · 정지영상 · 녹화 시작/중지 소리")
         self.sounds.setChecked(bool(config.sounds_enabled))
+        self.volume = QSlider(Qt.Orientation.Horizontal)
+        self.volume.setRange(0, 100)
+        self.volume.setSingleStep(5)
+        self.volume.setPageStep(10)
+        self.volume.setValue(int(max(0, min(100, config.sound_volume))))
+        self.volume.setToolTip("효과음 크기 (0 = 무음)")
+        self.volume_label = QLabel(f"{self.volume.value()}%")
+        self.volume_label.setMinimumWidth(40)
+        self.btn_preview = QPushButton("들어보기")
+        self.btn_preview.setToolTip("지금 슬라이더 크기로 '찰칵' 소리를 재생")
+        vol_row = QHBoxLayout()
+        vol_row.setContentsMargins(0, 0, 0, 0)
+        vol_row.addWidget(self.volume, 1)
+        vol_row.addWidget(self.volume_label)
+        vol_row.addWidget(self.btn_preview)
+        vol_w = QWidget()
+        vol_w.setLayout(vol_row)
+        self.volume.valueChanged.connect(lambda v: self.volume_label.setText(f"{v}%"))
+        self.btn_preview.clicked.connect(self._preview_sound)
+        self.sounds.toggled.connect(vol_w.setEnabled)
+        vol_w.setEnabled(self.sounds.isChecked())
         self.agent = QCheckBox("AI 에이전트 (장면 인식 · 자동 촬영 · 전후 클립 · 추천 프레임)")
         self.agent.setChecked(bool(config.agent_enabled))
         self.agent_clips = QCheckBox("촬영 전후 클립(mp4) 도 환자 영상으로 저장")
@@ -182,10 +208,12 @@ class SettingsDialog(QDialog):
         gform.addRow("화면 테마", self.theme)
         gform.addRow("시작 화면", self.start_home)
         gform.addRow("Smart 도구줄", self.smart_visible)
+        gform.addRow("촬영 후 보기", self.view_after)
         gform.addRow("사진 목록", self.split_eyes)
         gform.addRow("분할 화면", self.split_count)
         gform.addRow("", self.split_ask)
         gform.addRow("효과음", self.sounds)
+        gform.addRow("효과음 크기", vol_w)
         gform.addRow("AI 에이전트", self.agent)
         gform.addRow("", self.agent_clips)
         gform.addRow("", self.agent_logging)
@@ -221,7 +249,9 @@ class SettingsDialog(QDialog):
         self.tabs.addTab(self._build_preset_tab(), "촬영 모드")
         self.usb_tab = UsbButtonsTab(config, raw_input=getattr(parent, "usb_raw", None))
         self.tabs.addTab(self.usb_tab, "USB 버튼")
-        self.tabs.addTab(self._build_specs_tab(), "컴퓨터 사양")
+        self.backup_tab = BackupTab(config, manager=getattr(parent, "backup", None))
+        self.tabs.addTab(self.backup_tab, "백업")
+        self.tabs.addTab(self._build_specs_tab(), "컴퓨터 사양")     # 안내 탭은 맨 끝
 
         btns = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -241,6 +271,11 @@ class SettingsDialog(QDialog):
         if bad:
             self.show_tab("USB 버튼")
             QMessageBox.warning(self, "USB 버튼", bad)
+            return
+        bad = self.backup_tab.problem()
+        if bad:
+            self.show_tab("백업")
+            QMessageBox.warning(self, "백업", bad)
             return
         super().accept()
 
@@ -676,6 +711,14 @@ class SettingsDialog(QDialog):
         else:
             self.camera_hint.setVisible(False)
 
+    def _preview_sound(self) -> None:
+        was = sounds.is_enabled()
+        sounds.set_enabled(True)
+        try:
+            sounds.play("shutter", volume=self.volume.value())
+        finally:
+            sounds.set_enabled(was)
+
     def _browse(self) -> None:
         d = QFileDialog.getExistingDirectory(self, "저장 폴더 선택", self.export.text() or "")
         if d:
@@ -699,12 +742,14 @@ class SettingsDialog(QDialog):
         c.export_root = self.export.text().strip()
         c.test_file_path = self.test_file.text().strip()
         c.sounds_enabled = self.sounds.isChecked()
+        c.sound_volume = int(self.volume.value())
         c.agent_enabled = self.agent.isChecked()
         c.agent_save_clips = self.agent_clips.isChecked()
         c.agent_logging = self.agent_logging.isChecked()
         c.theme = self.theme.currentData() or "dark"
         c.start_screen = "home" if self.start_home.isChecked() else "capture"
         c.smart_bar_visible = self.smart_visible.isChecked()
+        c.view_after_capture = self.view_after.isChecked()
         c.thumbs_split_eyes = self.split_eyes.isChecked()
         c.split_count = int(self.split_count.currentData() or 4)
         c.split_count_saved = not self.split_ask.isChecked()
@@ -713,6 +758,8 @@ class SettingsDialog(QDialog):
         c.usb_buttons = self.usb_tab.values()
         c.usb_eye_auto = self.usb_tab.eye_auto()
         c.usb_device_check = self.usb_tab.device_check()
+        for k, v in self.backup_tab.values().items():
+            setattr(c, k, v)
         c.capture_presets = [dict(p, camera_props=dict(p["camera_props"])) for p in self._presets]
         if any(p["name"] == self._active for p in self._presets):
             c.active_preset = self._active

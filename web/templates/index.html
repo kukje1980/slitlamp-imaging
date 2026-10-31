@@ -253,6 +253,7 @@
       <span class="psep"></span>
       <button class="pbtn pghost" id="pro-comment" title="현재 영상 코멘트 편집"><svg class="ic"><use href="#i-comment"/></svg>코멘트</button>
       <button class="pbtn pghost" id="pro-patient" title="진단명·담당의 등 환자 정보"><svg class="ic"><use href="#i-user"/></svg>환자정보</button>
+      <button class="pbtn pghost pdanger" id="pro-delete" title="선택한 영상 삭제 — MULTI: 선택한 영상, 1화면: 현재 영상 (Delete)"><svg class="ic"><use href="#i-trash"/></svg>삭제</button>
       <span class="psep"></span>
       <div class="ptabs" role="tablist" aria-label="편집·분석 패널">
         <button class="ptab on" role="tab" data-tab="adj" aria-selected="true"><svg class="ic"><use href="#i-sliders"/></svg>보정</button>
@@ -617,7 +618,9 @@
   </div>
   <div class="viewer-body" id="viewer-body"></div>
   <div class="dialog-footer">
+    <button class="btn btn-ghost danger" type="button" id="viewer-delete" title="이 영상을 삭제 (Delete)"><svg class="ic"><use href="#i-trash"/></svg>삭제</button>
     <a class="btn" id="viewer-download" download><svg class="ic"><use href="#i-download"/></svg>다운로드</a>
+    <button class="btn btn-primary btn-retake" type="button" id="viewer-retake" style="display:none" title="촬영 화면으로 돌아가기 (Enter · Esc) — 촬영 단축키를 누르면 바로 다시 찍습니다"><svg class="ic"><use href="#i-camera"/></svg>다시 촬영</button>
     <button class="btn btn-primary" type="button" id="viewer-close-2">닫기</button>
   </div>
 </dialog>
@@ -682,6 +685,8 @@
         <select class="select" id="res-select" aria-label="해상도" title="실시간 영상 해상도 (카메라가 지원하는 범위에서)">
           <option value="2160">4K (2160p)</option><option value="1080" selected>Full HD (1080p)</option><option value="720">HD (720p)</option>
         </select></label>
+      <label class="set-row"><span>촬영 후 보기</span>
+        <span class="set-inline"><input type="checkbox" id="view-after-capture" checked> 사진을 찍으면 큰 화면으로 바로 보기</span></label>
       <label class="set-row"><span>동영상 화질</span>
         <select class="select" id="vq-select" aria-label="동영상 화질" title="일반: 가볍고 파일 작음 · 고화질: 더 선명, 파일 약 2.5배">
           <option value="normal" selected>일반</option><option value="high">고화질</option>
@@ -709,6 +714,11 @@
         <button class="btn btn-sm" id="btn-sounds" title="사진 캡처 '찰칵' · 정지영상 · 녹화 시작/중지 소리" aria-pressed="true">
           <svg class="ic"><use href="#i-sound"/></svg><span id="sounds-label">효과음 켜짐</span>
         </button></div>
+      <div class="set-row"><span>효과음 크기</span>
+        <span class="set-inline set-volume">
+          <input type="range" id="sound-volume" min="0" max="100" step="5" value="100" aria-label="효과음 크기" title="효과음 크기 (0 = 무음) · 놓으면 들려 줍니다">
+          <output id="sound-volume-out" for="sound-volume">100%</output>
+        </span></div>
     </section>
     <section class="set-sec">
       <h4><svg class="ic"><use href="#i-info"/></svg>컴퓨터 사양</h4>

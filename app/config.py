@@ -60,6 +60,7 @@ class AppConfig:
     start_screen: str = "home"               # 시작 화면: home(홈 메뉴) | capture(바로 촬영)
     home_image: str = ""                     # 홈 화면 큰 사진 (비면 브랜드 기본 사진 · 그림)
     sounds_enabled: bool = True              # 효과음 (캡처 찰칵 · 정지영상 · 녹화 시작/중지)
+    sound_volume: int = 100                  # 효과음 크기 0~100
     clinic_name: str = ""                    # 인쇄 보고서 머리말 기관명
     px_per_mm: float = 0.0                   # 측정 눈금 보정 (0 = 미보정, px 단위)
     brand: str = ""                          # 화면 브랜드 (비면 기본, "keeler" = Keeler 전용)
@@ -67,6 +68,13 @@ class AppConfig:
     usb_buttons: dict = field(default_factory=dict)  # 슬릿램프 USB 버튼 {"1": {"key", "action"}} (app/usb_buttons.py, 비면 기본값)
     usb_eye_auto: bool = True                # 슬릿램프 좌우 신호(F6 → OD · F7 → OS)로 검사눈 자동 인식 (끄면 OD · OS 는 직접)
     usb_device_check: bool = True            # Windows Raw Input 으로 VID 04D9 / PID 1203 장치의 신호만 좌우 신호로 (app/usb_raw_input.py)
+    # 백업 (app/services/backup_service.py) — 외장 하드 · 다른 드라이브의 '시작날짜+마지막날짜' 폴더 (예: 210908261028)
+    backup_root: str = ""                    # 백업 위치 (비면 백업 안 함)
+    backup_auto: bool = True                 # 자동: 저장 즉시 복사(실시간) + 켤 때 · 주기적으로 빠진 파일 확인 (끄면 수동)
+    backup_interval_min: int = 60            # 빠진 파일 확인 주기 (분)
+    backup_on_exit: bool = True              # 프로그램을 닫을 때 환자 기록 DB · 못 한 파일 마무리
+    backup_set_id: str = ""                  # 이 PC 의 지금 백업 폴더 번호 (폴더 안 backup_info.json 의 set_id)
+    backup_last_at: str = ""                 # 마지막으로 백업을 마친 시각 (표시용)
     # 스마트 캡처 (Pro LIVE) — app/capture/smart_capture.py
     smart_auto_mode: str = "off"             # off | freeze(초점 맞으면 자동 정지) | save(자동 저장)
     smart_roi_frac: float = 0.5              # 초점 판정 관심 영역 (화면 중앙 비율 0.2~1.0)
@@ -80,6 +88,8 @@ class AppConfig:
     smart_roi: list = field(default_factory=list)   # 정규화 [x, y, w, h] (비면 화면 중앙 60%)
     smart_bar_visible: bool = True           # 촬영 화면의 Smart 도구줄 보이기 (숨겨도 자동 촬영 설정은 유지)
     ref_bar_visible: bool = False            # 촬영 화면의 참조 줄 보이기 (고른 참조 사진은 멀티 화면에 같이)
+    multi_side_visible: bool = False         # 멀티 화면 오른쪽 메뉴(보정 · 편집 · 분석) 보이기 (기본: 접힘)
+    view_after_capture: bool = True          # 사진을 찍으면 큰 화면으로 바로 보기 ('다시 촬영' 으로 촬영 화면 복귀)
     smart_best_shot: bool = True             # 사진 캡처 시 최근 0.6초 중 가장 선명한 프레임 저장
     smart_ready_pct: float = 85.0            # 초점 판정 기준 (최근 최고 선명도 대비 %)
     smart_cooldown_s: float = 2.5            # 자동 촬영 사이 최소 간격(초)
@@ -96,6 +106,7 @@ class AppConfig:
     camera_props: dict = field(default_factory=dict)  # 카메라 속성 {노출·게인·WB…} (app/capture/camera_props.py)
     report_per_page: int = 2                 # 보고서 한 쪽 영상 수 (1 / 2 / 4)
     slideshow_seconds: int = 3               # 슬라이드쇼 넘김 간격(초)
+    bundled_samples: str = ""               # 설치판 샘플 사진을 등록한 묶음 이름 (한 번만 등록)
 
     @classmethod
     def config_path(cls) -> Path:

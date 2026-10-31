@@ -71,14 +71,29 @@ class CapturesDAO:
             self._c.execute("UPDATE captures SET note=? WHERE id=?", (note, cid))
 
     def delete(self, cid: int) -> Optional[dict]:
-        """레코드를 지우고, 디스크 정리를 위해 관련 경로를 반환한다."""
+        """레코드를 지우고, 디스크 정리를 위해 관련 경로를 반환한다.
+
+        다른 기록이 아직 같은 파일을 가리키면(DB 복원 · 가져오기 · 날짜 수정으로 생길 수 있음) 그 경로는 None 으로
+        돌려준다 — 부르는 쪽이 그 파일을 지우지 않게 (다른 기록의 영상이 사라지면 안 된다).
+        """
         with self._lock, self._c:
             r = self._c.execute(
                 "SELECT file_path, export_path, thumbnail_path FROM captures WHERE id=?",
                 (cid,),
             ).fetchone()
+            if r is None:
+                return None
             self._c.execute("DELETE FROM captures WHERE id=?", (cid,))
-        return dict(r) if r is not None else None
+            return self._unshared(dict(r))
+
+    def _unshared(self, row: dict) -> dict:
+        """row 의 file_path · thumbnail_path 중 남은 기록이 아직 쓰는 것은 None 으로 (잠금 안에서 부른다)."""
+        for key in ("file_path", "thumbnail_path"):
+            p = row.get(key)
+            if p and self._c.execute(
+                    "SELECT 1 FROM captures WHERE file_path=? OR thumbnail_path=? LIMIT 1", (p, p)).fetchone():
+                row[key] = None
+        return row
 
     @staticmethod
     def _row(r) -> Optional[Capture]:

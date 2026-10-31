@@ -194,28 +194,67 @@ def _read_info(folder: Path) -> dict | None:
     return data if isinstance(data, dict) and data.get("set_id") else None
 
 
-def _atomic_write(path: Path, data: bytes) -> None:
+def _anchor_missing(anchor) -> bool:
+    return anchor is not None and not Path(anchor).is_file()
+
+
+def _mkdir_guarded(parent: Path, anchor=None) -> list[Path]:
+    """parent 폴더를 만든다 (없는 윗 폴더까지). 만든 폴더 목록(깊은 것부터)을 돌려준다.
+
+    anchor(백업 폴더 안의 표지 파일 backup_info.json)가 주어지면 만들기 전후로 그 파일이 있는지 본다 — 없으면
+    외장 하드가 빠진 것이라 방금 만든 빈 폴더를 되돌리고 DriveMissing. 그냥 만들면 내장 디스크에 같은 이름의 폴더
+    (맥: /Volumes/이름/…)가 생겨 그쪽으로 백업하게 되고, 다음에 하드를 꽂으면 '이름 1' 로 붙는다.
+    """
+    if _anchor_missing(anchor):
+        raise DriveMissing(f"백업 위치가 연결되어 있지 않습니다 (복사 중 빠짐): {Path(anchor).parent}")
+    made: list[Path] = []
+    p = Path(parent)
+    while not p.exists():
+        made.append(p)
+        if p.parent == p:
+            break
+        p = p.parent
+    Path(parent).mkdir(parents=True, exist_ok=True)
+    if _anchor_missing(anchor):
+        _rmdirs(made)
+        raise DriveMissing(f"백업 위치가 연결되어 있지 않습니다 (복사 중 빠짐): {Path(anchor).parent}")
+    return made
+
+
+def _rmdirs(dirs) -> None:
+    for d in dirs:                           # 깊은 것부터 — 비어 있는 것만 지워진다
+        try:
+            Path(d).rmdir()
+        except OSError:
+            pass
+
+
+def _atomic_write(path: Path, data: bytes, anchor=None) -> None:
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    made = _mkdir_guarded(path.parent, anchor)
     tmp = path.with_name(f".{path.name}.bkpart")
     try:
         with open(tmp, "wb") as f:
             f.write(data)
             f.flush()
             os.fsync(f.fileno())
+        if _anchor_missing(anchor):
+            raise DriveMissing(f"백업 위치가 연결되어 있지 않습니다 (복사 중 빠짐): {Path(anchor).parent}")
         os.replace(tmp, path)
-    except OSError as e:
+    except (OSError, DriveMissing) as e:
         try:
             tmp.unlink()
         except OSError:
             pass
-        if e.errno == errno.ENOSPC:
+        if isinstance(e, DriveMissing) or _anchor_missing(anchor):
+            _rmdirs(made)                    # 하드가 빠진 뒤 내장 디스크에 만들어진 빈 폴더는 되돌린다
+        if isinstance(e, OSError) and e.errno == errno.ENOSPC:
             raise BackupDiskFull("백업 드라이브 공간이 부족합니다") from e
         raise
 
 
-def _write_info(folder: Path, info: dict) -> None:
-    _atomic_write(Path(folder) / INFO_FILE, json.dumps(info, ensure_ascii=False, indent=2).encode("utf-8"))
+def _write_info(folder: Path, info: dict, anchor=None) -> None:
+    _atomic_write(Path(folder) / INFO_FILE, json.dumps(info, ensure_ascii=False, indent=2).encode("utf-8"), anchor)
 
 
 def _as_date(s, fallback):
@@ -301,7 +340,7 @@ def ensure_set(root, set_id: str, today: date, extra: dict | None = None) -> tup
     info.update(extra or {})
     info["last"] = last.isoformat()
     if info != cur.info:
-        _write_info(cur.path, info)
+        _write_info(cur.path, info, anchor=cur.path / INFO_FILE)
     cur.last, cur.info = last, info
     return cur, warn
 
@@ -311,7 +350,7 @@ def finish_set(bset: BackupSet, **values) -> None:
     info = dict(bset.info)
     info["last_at"] = datetime.now().isoformat(timespec="seconds")
     info.update({k: v for k, v in values.items() if v is not None})
-    _write_info(bset.path, info)
+    _write_info(bset.path, info, anchor=bset.path / INFO_FILE)
     bset.info = info
 
 
@@ -338,14 +377,16 @@ def _needs_copy(size: int, mtime: float, dst: Path) -> bool:
     return st.st_size != size or abs(st.st_mtime - mtime) > MTIME_SLACK_S
 
 
-def copy_file(src, dst, min_free_mb: float = MIN_FREE_MB, cancel=None) -> int:
+def copy_file(src, dst, min_free_mb: float = MIN_FREE_MB, cancel=None, anchor=None) -> int:
     """src → dst 를 임시 이름(.이름.bkpart)에 다 쓰고 디스크에 내린 뒤 바꿔 넣는다 (수정 시각 보존). 복사한 바이트 수.
 
     cancel() 이 참이면 CHUNK 마다 확인해 Cancelled — 임시 파일은 지운다 (반쯤 복사된 파일이 남지 않게).
+    anchor(백업 폴더의 backup_info.json)를 주면 폴더를 만들 때와 바꿔 넣기 직전에 그 파일이 있는지 보고, 없으면
+    (외장 하드가 빠짐) 만든 폴더 · 임시 파일을 되돌리고 DriveMissing — 내장 디스크에 백업 폴더가 생기지 않게.
     """
     src, dst = Path(src), Path(dst)
     size = src.stat().st_size
-    dst.parent.mkdir(parents=True, exist_ok=True)
+    made = _mkdir_guarded(dst.parent, anchor)
     try:
         free = shutil.disk_usage(dst.parent).free
     except OSError:
@@ -366,12 +407,16 @@ def copy_file(src, dst, min_free_mb: float = MIN_FREE_MB, cancel=None) -> int:
             fo.flush()
             os.fsync(fo.fileno())            # 하드를 바로 뽑아도 바꿔 넣은 파일은 내용까지 있게
         shutil.copystat(src, tmp)
+        if _anchor_missing(anchor):
+            raise DriveMissing(f"백업 위치가 연결되어 있지 않습니다 (복사 중 빠짐): {Path(anchor).parent}")
         os.replace(tmp, dst)
     except BaseException as e:
         try:
             tmp.unlink()
         except OSError:
             pass
+        if isinstance(e, DriveMissing) or _anchor_missing(anchor):
+            _rmdirs(made)                    # 하드가 빠진 뒤 내장 디스크에 만들어진 빈 폴더는 되돌린다
         if isinstance(e, OSError) and e.errno == errno.ENOSPC:
             raise BackupDiskFull("백업 드라이브 공간이 부족합니다") from e
         raise
@@ -392,6 +437,9 @@ def plan_tree(src_root, dst_root, busy=(), known=(), now: float | None = None, c
     known = {_norm(p) for p in known}
     todo, n = [], 0
     for dirpath, dirnames, filenames in os.walk(src_root):
+        if dirpath != str(src_root) and os.path.isfile(os.path.join(dirpath, INFO_FILE)):
+            dirnames[:] = []                 # 사진 폴더 안에 백업 폴더가 있어도 자기 자신은 복사하지 않는다
+            continue
         dirnames.sort()
         for fn in sorted(filenames):
             if cancel is not None and cancel():
@@ -441,7 +489,7 @@ def _serialize_db(db_path: Path) -> bytes:
         src.close()
 
 
-def snapshot_db(db_path, dest_dir, today: date, keep: int = DB_HISTORY_KEEP) -> Path | None:
+def snapshot_db(db_path, dest_dir, today: date, keep: int = DB_HISTORY_KEEP, anchor=None) -> Path | None:
     """DB 를 dest_dir/<이름> 과 dest_dir/history/<이름>-YYYYMMDD 로 (그날 것은 마지막 상태로 덮어씀)."""
     src = Path(db_path or "")
     if not src.is_file():
@@ -449,9 +497,9 @@ def snapshot_db(db_path, dest_dir, today: date, keep: int = DB_HISTORY_KEEP) -> 
     data = _serialize_db(src)
     dest_dir = Path(dest_dir)
     dst = dest_dir / src.name
-    _atomic_write(dst, data)
+    _atomic_write(dst, data, anchor)
     hist_dir = dest_dir / "history"
-    _atomic_write(hist_dir / f"{src.stem}-{today:%Y%m%d}{src.suffix}", data)
+    _atomic_write(hist_dir / f"{src.stem}-{today:%Y%m%d}{src.suffix}", data, anchor)
     old = sorted(hist_dir.glob(f"{src.stem}-*{src.suffix}"))
     for p in old[:-keep] if keep > 0 else []:
         try:
@@ -642,7 +690,7 @@ class BackupManager(QObject):
         from app import __version__
         db_path = getattr(cfg, "db_path", "")
         job = {"kind": kind, "root": (self.root() if root is None else (root or "").strip()), "set_id": self.set_id(),
-               "sources": self.sources(), "db_path": db_path,
+               "sources": self.sources(), "db_path": db_path, "media_root": str(getattr(cfg, "media_root", "") or ""),
                "config_path": str(type(cfg).config_path()) if hasattr(type(cfg), "config_path") else "",
                "busy": set(self._busy), "known": set(self._known),
                "info": {"machine": platform.node(), "app_version": __version__,
@@ -814,6 +862,11 @@ class BackupManager(QObject):
                 self._dirty = True
                 self._message = (self._message + " · " if self._message else "") + \
                     f"복사하지 못한 파일 {len(res['failed'])}개 (다음 확인 때 다시)"
+            if res.get("source_missing"):
+                self._dirty = True
+                self._message = (self._message + " · " if self._message else "") + \
+                    f"사진 저장 폴더를 찾을 수 없어 사진 · 동영상은 백업하지 못했습니다: {res['source_missing']} " \
+                    "(연결을 확인하세요 — 환자 기록 DB 는 백업했습니다)"
         else:
             self._state = res.get("state", "error")
             self._message = res.get("message", "")
@@ -903,6 +956,9 @@ class BackupManager(QObject):
             root = job["root"]
             if not root or not os.path.isdir(root):
                 raise DriveMissing(f"백업 위치가 연결되어 있지 않습니다: {root}")
+            level, text = describe_target(root, job.get("media_root", ""))
+            if level == "error":             # 사진 폴더 안 · 백업 폴더 자체 (설정 파일을 손으로 고쳤거나 사진 폴더를 나중에
+                raise BackupError(text)      # 바꾼 경우) — 그대로 돌리면 자기 자신을 복사해 돌 때마다 두 배로 커진다
             today = self._today()
             bset, warn = ensure_set(root, job["set_id"], today, job["info"])
             res.update(set_name=bset.name, set_path=str(bset.path))
@@ -911,8 +967,10 @@ class BackupManager(QObject):
             else:
                 stats = self._files(bset, job, files)
                 if want_db:
-                    snapshot_db(job["db_path"], bset.path / "db", today)
+                    self._require(bset)
+                    snapshot_db(job["db_path"], bset.path / "db", today, anchor=bset.path / INFO_FILE)
                     res["db"] = True
+            self._require(bset)
             finish_set(bset, files=stats.scanned or None)
             res.update(ok=True, set_name=bset.name, set_path=str(bset.path), warn=warn, copied=stats.copied,
                        bytes=stats.bytes, failed=stats.failed, scanned=stats.scanned)
@@ -926,6 +984,16 @@ class BackupManager(QObject):
             log.exception("백업 실패")
             res.update(state="error", message=f"{type(e).__name__}: {e}")
         self._sig_done.emit(res)
+
+    @staticmethod
+    def _require(bset: BackupSet) -> None:
+        """백업 폴더가 아직 있는지 (외장 하드가 빠졌으면 없다) — 없으면 바로 멈춘다.
+
+        그냥 계속 쓰면 폴더 만들기(mkdir)가 내장 디스크에 같은 이름의 폴더를 다시 만들어 그쪽으로 백업하게 된다
+        (맥은 /Volumes/이름 폴더가 남으면 다음에 하드를 꽂아도 '이름 1' 로 붙어 백업이 영영 내장 디스크로 간다).
+        """
+        if not (bset.path / INFO_FILE).is_file():
+            raise DriveMissing(f"백업 위치가 연결되어 있지 않습니다 (복사 중 빠짐): {bset.path.parent}")
 
     def _target(self, bset: BackupSet, job: dict, path: str) -> Path | None:
         for src, sub in job["sources"]:
@@ -943,7 +1011,8 @@ class BackupManager(QObject):
             try:
                 if not _needs_copy(*_size_mtime(p), dst):
                     continue
-                stats.bytes += copy_file(p, dst, cancel=self._halt.is_set)
+                self._require(bset)
+                stats.bytes += copy_file(p, dst, cancel=self._halt.is_set, anchor=bset.path / INFO_FILE)
                 stats.copied += 1
             except FileNotFoundError:
                 continue                     # 그 사이에 지운 파일
@@ -961,10 +1030,13 @@ class BackupManager(QObject):
 
         stats = SyncStats()
         self._sig_progress.emit(0.0, 0.0, "환자 기록(DB) 백업 중")
-        if snapshot_db(job["db_path"], bset.path / "db", today) is not None:
+        self._require(bset)
+        if snapshot_db(job["db_path"], bset.path / "db", today, anchor=bset.path / INFO_FILE) is not None:
             res["db"] = True
         plans = []
         for src, sub in job["sources"]:
+            if sub == "media" and not (src and os.path.isdir(src)):
+                res["source_missing"] = src  # 사진 폴더(NAS 등)가 끊김 — 사진은 못 봤으니 '백업 ✓' 로 보이면 안 된다
             todo, n = plan_tree(src, bset.path / sub, busy=job["busy"], known=job["known"], cancel=cancel,
                                 on_scan=lambda k, base=stats.scanned: self._sig_progress.emit(
                                     0.0, 0.0, f"확인 중 · 파일 {base + k:,}개"))
@@ -977,7 +1049,8 @@ class BackupManager(QObject):
         done, shown = 0.0, 0.0
         for i, (sp, dp, size) in enumerate(plans, 1):
             try:
-                copy_file(sp, dp, cancel=cancel)
+                self._require(bset)
+                copy_file(sp, dp, cancel=cancel, anchor=bset.path / INFO_FILE)
                 stats.copied += 1
                 stats.bytes += size
             except FileNotFoundError:
@@ -992,13 +1065,14 @@ class BackupManager(QObject):
             if now - shown > 0.2 or i == len(plans):
                 shown = now
                 self._sig_progress.emit(done, max(total, 1.0), f"복사 중 {i:,} / {len(plans):,} 파일")
+        self._require(bset)
         if plans:
-            snapshot_db(job["db_path"], bset.path / "db", today)   # 복사하는 동안 바뀐 기록까지
+            snapshot_db(job["db_path"], bset.path / "db", today, anchor=bset.path / INFO_FILE)   # 복사하는 동안 바뀐 기록까지
         cfg = Path(job.get("config_path") or "")
         if cfg.is_file():
-            copy_file(cfg, bset.path / "config" / cfg.name, min_free_mb=0)
+            copy_file(cfg, bset.path / "config" / cfg.name, min_free_mb=0, anchor=bset.path / INFO_FILE)
         bset.info["last_at"] = datetime.now().isoformat(timespec="seconds")
-        _atomic_write(bset.path / README_FILE, _readme(bset, job).encode("utf-8-sig"))
+        _atomic_write(bset.path / README_FILE, _readme(bset, job).encode("utf-8-sig"), anchor=bset.path / INFO_FILE)
         return stats
 
 

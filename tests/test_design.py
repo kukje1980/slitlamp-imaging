@@ -141,7 +141,7 @@ def test_topbar_has_patient_icon_buttons(qapp, app_env):
         assert w.btn_edit_patient.isEnabled() and w._current_patient.id == pid
         # 촬영 도크·상단 메뉴는 아이콘 위·글자 아래 버튼 (QPushButton 기반)
         from app.ui.icon_button import IconTextButton
-        assert isinstance(w.control_bar.btn_record, IconTextButton) and isinstance(w.btn_mode_pro, IconTextButton)
+        assert isinstance(w.control_bar.btn_record, IconTextButton) and isinstance(w.btn_mode_exam, IconTextButton)
     finally:
         w.close()
         w.deleteLater()

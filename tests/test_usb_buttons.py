@@ -332,7 +332,7 @@ def test_not_in_text_input_other_screens_or_dialogs(qapp, win):
     _click(_target(), F10)
     _pump(qapp)
     assert not win._single_frozen
-    win.set_mode("pro")                                            # 촬영 화면이 아니면 실행 안 함
+    win.set_mode("exam")                                           # 촬영 화면이 아니면 실행 안 함
     _pump(qapp)
     assert win._usb_context() == "screen"
     rec0 = win._recording
@@ -516,7 +516,7 @@ def test_eye_signal_held_in_text_input_other_screen_and_dialog(qapp, win):
     _pump(qapp)
     assert QApplication.focusWidget() is win.video_view
     assert cb.current_eye() == "OS" and win.eye_status()["pending"] is None and cb.eye_status.text() == "자동"
-    win.set_mode("pro")                                                             # 다른 화면: 보류
+    win.set_mode("exam")                                                            # 다른 화면: 보류
     _pump(qapp)
     _click(_target(), F6)
     _pump(qapp)

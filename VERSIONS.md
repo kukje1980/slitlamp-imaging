@@ -229,3 +229,15 @@ v1.8.0 이후 `main` 에 들어온 변경을 모두 합친 최종판입니다 (`
   줄여 읽고 `devicePixelRatio` 크기로 그림, 캐시 LRU 250.
 - **실시간 멀티화면** `config.live_multi` (설정 → 일반, 기본 끔): 선택이 생기면 `_enter_multi`, 다 빼면 라이브.
 
+## v1.20.3 — 2026-10-31
+- **Pro 검토 입구 없앰**: 상단 `btn_mode_pro` · `act_pro` · `_on_pro_toggled`, 홈 `TILES` 의 pro, 검사 기록 `btn_pro` · `openInPro` 삭제.
+  `set_mode('pro')` · `self.pro` · `MODES` 순서는 내부용으로 유지. 단축키 `mode`(F2)는 `shortcuts.HIDDEN_IN_STANDARD` — 기본 앱은 걸지 않고
+  `ShortcutsDialog(hidden=)` 에서 숨김, 저장값 보존(Explorer 판은 그대로), USB 버튼 키 겹침 검사에서 제외.
+- **아래 참조 줄 없앰**: `RefBar` 는 화면 밖 숨긴 선택 모델(부모만 둠), `_set_ref_bar_visible` · 도크 `btn_refs`(숨김) · `config.ref_bar_visible`(무시) 정리.
+  설정 빠른 버튼 '참조 영상 라이브러리'(`actions["references"]`, 설정을 닫고 `QTimer.singleShot(0, open_references)`),
+  `SettingsDialog(standard=False)` 인 Explorer 판에는 숨김.
+- **캡처 = 초기화** `config.capture_in_view` = reset(기본) | capture, 설정 → 일반 '보기 · 멀티 화면에서 캡처'. `MainWindow._reset_capture_view`
+  (보기 창 · 멀티 닫기, 선택 · 참조 · 질환 아이콘 · 정지 화면 비움). 경로: `_on_capture`(멀티), `_retake_from_viewer`(보기 창 단축키),
+  `_on_usb_button`(`_usb_viewer_closed_at` — 보기 창을 닫은 그 누름이면 화면 검사보다 먼저 초기화).
+- **보기 창 전송**: `MainWindow._send_captures(caps, parent)` 로 나눔(`_on_send` 는 목록 선택을 넘김, 사진의 환자로 보냄),
+  `ImageViewerDialog.sendRequested` · `sendDeleteRequested` → `_send_from_viewer`(전송(삭제)는 모두 보냈을 때만 확인 후 `Deleted`).

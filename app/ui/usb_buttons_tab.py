@@ -204,6 +204,8 @@ class UsbButtonsTab(QWidget):
             if any(usb_buttons.same_key(k, r) for r in shortcuts.RESERVED):
                 return f"'{usb_buttons.display(k)}' 는 화면에서 이미 쓰는 키라 USB 버튼에 쓸 수 없습니다."
             for aid, sk in shortcuts.load(self.config).items():
+                if aid in shortcuts.HIDDEN_IN_STANDARD:
+                    continue                    # 촬영 앱에서 쓰지 않는 단축키(촬영 ↔ Pro 전환 F2)와는 겹쳐도 됨
                 if usb_buttons.same_key(k, sk):
                     return (f"'{usb_buttons.display(k)}' 는 단축키 '{shortcuts.label(aid)}' 에도 지정되어 있습니다 — "
                             "설정 → 단축키 설정에서 그 단축키를 바꾸거나 USB 버튼에 다른 키를 고르세요.")

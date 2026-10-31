@@ -65,7 +65,9 @@ def test_icon_button_api_and_click(qapp):
 
 
 def test_top_menu_clicks_switch_screens(qapp, win):
-    for name, mode in (("btn_mode_exam", "exam"), ("btn_mode_pro", "pro"), ("btn_mode_home", "home"),
+    assert not hasattr(win, "btn_mode_pro") and not hasattr(win, "act_pro")   # v1.20.3: Pro 검토 입구 없앰
+    assert "pro" not in win.mode_buttons
+    for name, mode in (("btn_mode_exam", "exam"), ("btn_mode_home", "home"),
                        ("btn_mode_patients", "patients"), ("btn_mode_capture", "capture")):
         QTest.mouseClick(getattr(win, name), Qt.MouseButton.LeftButton)
         qapp.processEvents()
@@ -639,7 +641,7 @@ def test_multi_save_edited_and_double_click(qapp, win, monkeypatch):
     assert opened == [caps[1].id]                                         # 두 번 누르면 큰 화면으로
 
 
-# ---------------- 참조 줄: 도크 '참조' 로 열고 닫기 · 고르면 멀티에 같이 ----------------
+# ---------------- 참조 선택(숨긴 참조 줄): 고르면 멀티에 같이 — v1.20.3 부터 화면 아래 참조 줄 · 도크 '참조' 없음 ----------------
 def _add_reference(win, tmp_path, title="참조 백내장"):
     import numpy as np
     from app.services.capture_service import CaptureService
@@ -649,26 +651,45 @@ def _add_reference(win, tmp_path, title="참조 백내장"):
     return win.db.references.list()[0]
 
 
-def test_reference_bar_toggle_and_top_button_removed(qapp, win):
+def test_reference_bar_removed_from_screen(qapp, win):
     cb = win.control_bar
     assert not hasattr(win, "btn_refs")                                   # 상단바 '참조 영상' 은 없앰
-    assert cb.btn_refs.text() == "참조" and cb.btn_refs.isVisible()
-    x_smart = cb.btn_smart.mapTo(cb, cb.btn_smart.rect().topLeft()).x()
-    x_refs = cb.btn_refs.mapTo(cb, cb.btn_refs.rect().topLeft()).x()
-    assert x_refs > x_smart and x_refs < cb.btn_freeze.mapTo(cb, cb.btn_freeze.rect().topLeft()).x()
-    assert not win.ref_bar.isVisible() and not cb.btn_refs.isChecked()   # 처음엔 닫힘
-    QTest.mouseClick(cb.btn_refs, Qt.MouseButton.LeftButton)
-    assert win.ref_bar.isVisible() and win.config.ref_bar_visible
-    QTest.mouseClick(win.ref_bar.btn_hide, Qt.MouseButton.LeftButton)     # 줄의 ▼ 로 숨기기
-    assert not win.ref_bar.isVisible() and not cb.btn_refs.isChecked() and not win.config.ref_bar_visible
+    assert not cb.btn_refs.isVisible() and cb.btn_refs.parent() is cb     # 도크 '참조' 도 없앰 (속성 · 신호만 남김)
+    assert not hasattr(win, "_set_ref_bar_visible")
+    rb = win.ref_bar
+    assert not rb.isVisible() and not rb.isWindow() and rb.parent() is not None   # 숨긴 선택 모델 (따로 창이 뜨지 않게)
+    cb.refsToggled.emit(True)                                             # 예전 신호가 와도 보이지 않음
+    rb.hideRequested.emit()
+    win._set_fullscreen(True)
+    win._set_fullscreen(False)
+    qapp.processEvents()
+    assert not rb.isVisible()
+
+
+def test_reference_bar_stays_hidden_with_old_config(qapp, app_env):
+    """예전 설정 파일에 ref_bar_visible = true 가 있어도 아래 참조 줄은 보이지 않는다."""
+    from app.ui.main_window import MainWindow
+    config, db = app_env
+    config.source_mode = "synthetic"
+    config.save = lambda: None
+    config.ref_bar_visible = True
+    w = MainWindow(config, db)
+    try:
+        w.show()
+        qapp.processEvents()
+        assert not w.ref_bar.isVisible() and not w.control_bar.btn_refs.isVisible()
+    finally:
+        w.close()
+        w.deleteLater()
+        qapp.processEvents()
 
 
 def test_reference_bar_pick_shows_in_multi(qapp, win, tmp_path):
     ref = _add_reference(win, tmp_path)
     caps = _photos(win, 1)
     panel = win.thumbnail_panel
-    QTest.mouseClick(win.control_bar.btn_refs, Qt.MouseButton.LeftButton)
     rb = win.ref_bar
+    rb.reload()                                                           # 숨긴 모델: 질환 아이콘이 처음 고를 때 읽음
     assert _wait(qapp, lambda: len(rb.refs()) == 1)
     assert any("수정체" in rb.c_cat.itemText(i) for i in range(rb.c_cat.count()))
     rb.toggle(0)                                                          # 참조 사진을 고르면 바로 멀티로
@@ -697,17 +718,14 @@ def test_reference_bar_pick_shows_in_multi(qapp, win, tmp_path):
     assert not win._multi and rb.selected_refs() == [] and panel.selected_captures() == []
 
 
-def test_reference_bar_in_multi_fits_small_screen(qapp, win):
-    """1920×1080 화면 · 150% 배율 = 1280×720 (작업 표시줄 빼면 약 680) — 멀티에서 참조 줄을 열어도 창이 화면보다 커지지 않게."""
+def test_multi_fits_small_screen(qapp, win):
+    """1920×1080 화면 · 150% 배율 = 1280×720 (작업 표시줄 빼면 약 680) — 멀티 화면에서도 창이 화면보다 커지지 않게."""
     _enter_multi(qapp, win, 2)
-    assert win.minimumSizeHint().height() <= 680
-    win.control_bar.btn_refs.click()
     for _ in range(5):
         qapp.processEvents()
-    assert win.ref_bar.isVisible()
+    assert not win.ref_bar.isVisible()                                   # 참조 줄은 없음 (v1.20.3)
     hint = win.minimumSizeHint()
     assert hint.height() <= 680 and hint.width() < 1200
-    assert win.ref_bar.height() <= 80                                    # 참조 줄은 낮게
 
 
 # ---------------- 오른쪽 클릭 = 멀티 · 큰 보기 돋보기 · 충혈 민감도 ----------------

@@ -1195,7 +1195,7 @@ class ExplorerWindow(QMainWindow):
             "camera": self.restart_camera,
             "shortcuts": lambda parent: self.open_shortcuts(),
             "samples": lambda parent: self.import_samples(parent=parent),
-        })
+        }, standard=False)
         if tab:
             dlg.show_tab(tab)
         if dlg.exec():

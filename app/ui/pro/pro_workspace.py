@@ -935,7 +935,7 @@ class ProWorkspace(QWidget):
         n = self.grid_view.count()
         cap = self.grid_view.active_capture()
         if cap is None:
-            return "멀티 — 오른쪽 목록에서 사진을 고르거나 아래 '참조' 줄에서 참조 사진을 고르세요"
+            return "멀티 — 오른쪽 목록에서 사진을 고르거나 위 질환 아이콘으로 참조 사진을 고르세요"
         head = f"멀티 {n}장  ·  {self.grid_view.index_of(self.grid_view.active_canvas()) + 1}번 칸 (노란 테두리)"
         if is_reference(cap):
             r = cap.ref

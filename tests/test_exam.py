@@ -123,12 +123,14 @@ def test_main_window_modes(qapp, app_env):
         assert w.mode() == "capture" and w.patient_panel.isVisibleTo(w) and w._shortcut_objs["capture"].isEnabled()
         w.set_mode("exam")
         assert w.mode_stack.currentIndex() == 2 and w.exam_screen.day_list.count() == 2
-        w.act_pro.toggle()                                                    # F2 동작
-        assert w.mode() == "pro" and w.btn_mode_pro.isChecked()
-        w.act_pro.toggle()
-        assert w.mode() == "capture"
-        w.exam_screen.openInPro.emit()
-        assert w.mode() == "pro"
+        # v1.20.3: Pro 검토로 들어가는 길(상단 버튼 · F2 · 홈 타일 · 검사 기록의 'Pro 검토')을 모두 없앰
+        assert not hasattr(w, "act_pro") and not hasattr(w, "btn_mode_pro")
+        assert not hasattr(w.exam_screen, "btn_pro") and not hasattr(w.exam_screen, "openInPro")
+        assert "pro" not in w.home.tiles
+        w._run_action("mode")                                                 # 예전 F2 동작 id: 아무 일 없음
+        assert w.mode() == "exam"
+        w._on_home_action("pro")
+        assert w.mode() == "exam"
         w.set_mode("home")
         assert w.mode_stack.currentIndex() == 3
     finally:

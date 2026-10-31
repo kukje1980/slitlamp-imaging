@@ -1,7 +1,8 @@
 """상단바(환자 검색 오른쪽 빈 공간)의 질환별 작은 아이콘 줄.
 
-아이콘을 누르면 아래 참조 줄(RefBar)에 그 질환의 샘플 · 등록 참조 사진이 작은 사진으로 나오고,
-그 사진들이 지금 환자 사진과 함께 멀티 화면에 놓인다. 같은 아이콘을 다시 누르면 그 질환 사진을 뺀다.
+아이콘을 누르면 그 질환의 샘플 · 등록 참조 사진(최대 4장)이 지금 환자 사진과 함께 멀티 화면에 놓인다.
+같은 아이콘을 다시 누르면 그 질환 사진을 뺀다. (v1.20.3 부터 화면 아래 참조 줄은 없고, 고른 참조 사진은
+메인 창의 숨긴 선택 모델 RefBar 가 들고 있다.)
 질환 목록은 DB 의 샘플 환자(질환별, app/services/sample_import.py)와 등록한 참조 분류에서 만든다.
 아이콘 아래에 짧은 질환 이름(정상 · 건성안 · 백내장 …)이 보이고, 마우스를 올리면 아이콘 아래에 그 질환의
 사진이 작게(최대 PREVIEW_MAX 장) 뜬다 (DxPreview — 사진 목록은 메인 창이 preview_provider 로 준다).
@@ -79,7 +80,7 @@ class DxPreview(QFrame):
         self._row = QHBoxLayout()
         self._row.setSpacing(5)
         lay.addLayout(self._row)
-        self.hint = QLabel("누르면 아래 참조 줄과 멀티 화면에 지금 환자 사진과 같이 (다시 누르면 빼기)")
+        self.hint = QLabel("누르면 멀티 화면에 지금 환자 사진과 같이 (다시 누르면 빼기)")
         self.hint.setObjectName("Muted")
         lay.addWidget(self.hint)
         self.photos: list[QLabel] = []
@@ -167,7 +168,7 @@ class DxBar(QFrame):
         self.menu_btn.setObjectName("DxMenuBtn")
         self.menu_btn.setIcon(icons.icon("dx-normal", ICON, 18))
         self.menu_btn.setIconSize(QSize(18, 18))
-        self.menu_btn.setToolTip("질환별 참조 사진 — 고르면 아래 참조 줄과 멀티 화면에 지금 환자 사진과 같이")
+        self.menu_btn.setToolTip("질환별 참조 사진 — 고르면 멀티 화면에 지금 환자 사진과 같이 (다시 고르면 빼기)")
         self.menu_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.menu_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.menu = QMenu(self.menu_btn)

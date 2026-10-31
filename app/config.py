@@ -88,12 +88,16 @@ class AppConfig:
     smart_peaking_color: str = "red"         # red | green | yellow | cyan
     smart_roi: list = field(default_factory=list)   # 정규화 [x, y, w, h] (비면 화면 중앙 60%)
     smart_bar_visible: bool = True           # 촬영 화면의 Smart 도구줄 보이기 (숨겨도 자동 촬영 설정은 유지)
-    ref_bar_visible: bool = False            # 촬영 화면의 참조 줄 보이기 (고른 참조 사진은 멀티 화면에 같이)
+    ref_bar_visible: bool = False            # (v1.20.3 부터 쓰지 않음 — 화면 아래 참조 줄 없앰. 예전 설정 파일 호환용)
     multi_side_visible: bool = False         # 멀티 화면 오른쪽 메뉴(보정 · 편집 · 분석) 보이기 (기본: 접힘)
     right_click_items: list = field(default_factory=lambda: ["send", "multi", "delete"])   # 메뉴 항목: send · send_delete · multi · delete
     right_click_action: str = "menu"         # 사진 목록 오른쪽 클릭: menu(전송 · 삭제 · 멀티 메뉴) | multi(멀티 화면 바로)
     live_multi: bool = False                 # 실시간 멀티화면: 사진 목록에서 왼쪽 클릭으로 고르면 바로 가운데 멀티 화면 (다 빼면 라이브로)
     view_after_capture: bool = True          # 사진을 찍으면 큰 화면으로 바로 보기 ('다시 촬영' 으로 촬영 화면 복귀)
+    # 촬영 직후 큰 화면 · 멀티 화면에서 캡처(촬영 버튼 · 촬영 단축키 · USB 사진 버튼)를 누르면:
+    # reset(초기화 — 보기 창 · 멀티를 닫고 고른 사진 · 참조 · 질환 아이콘을 비워 라이브 촬영 화면으로, 사진은 찍지 않음)
+    # | capture(예전처럼 바로 촬영)
+    capture_in_view: str = "reset"
     smart_best_shot: bool = True             # 사진 캡처 시 최근 0.6초 중 가장 선명한 프레임 저장
     smart_ready_pct: float = 85.0            # 초점 판정 기준 (최근 최고 선명도 대비 %)
     smart_cooldown_s: float = 2.5            # 자동 촬영 사이 최소 간격(초)
@@ -164,6 +168,7 @@ class AppConfig:
             "photo_format": self.photo_format.lower() in ("png", "jpg", "jpeg"),
             "video_quality": self.video_quality in ("normal", "high"),
             "right_click_action": self.right_click_action in ("menu", "multi"),
+            "capture_in_view": self.capture_in_view in ("reset", "capture"),
             "right_click_items": (isinstance(self.right_click_items, list) and bool(self.right_click_items)
                                   and all(x in ("send", "send_delete", "multi", "delete") for x in self.right_click_items)),
             "thumbnail_max_side": self.thumbnail_max_side >= 480,   # 예전 기본 120 은 흐려서 480 으로

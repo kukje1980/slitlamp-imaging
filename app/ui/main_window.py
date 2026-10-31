@@ -219,6 +219,8 @@ class MainWindow(QMainWindow):
 
         self.thumbnail_panel = ThumbnailPanel(self.db, newest_on_top=self.config.newest_on_top,
                                               split_eyes=bool(getattr(self.config, "thumbs_split_eyes", False)))
+        self.thumbnail_panel.right_click_action = getattr(self.config, "right_click_action", "menu")
+        self.thumbnail_panel.set_menu_items(getattr(self.config, "right_click_items", None))
 
         root.addLayout(left, 1)
         root.addWidget(self.thumbnail_panel)
@@ -272,8 +274,11 @@ class MainWindow(QMainWindow):
         self.quad_view.cellClicked.connect(self._on_quad_cell_clicked)
         self.thumbnail_panel.thumbnailClicked.connect(self._on_thumbnail_clicked)   # 두 번 클릭: 큰 화면
         self.thumbnail_panel.selectionChanged.connect(self._on_selection_changed)   # 한 번 클릭: 선택
-        # 오른쪽 클릭 = '멀티' (사진 목록의 사진: 그 사진도 골라서 · 라이브 영상: 고른 사진으로)
+        # 사진 목록 오른쪽 클릭 = 전송 · 삭제 · 멀티 메뉴 (그 사진도 골라서, 고른 사진 전체) · 라이브 영상 오른쪽 클릭 = 멀티
         self.thumbnail_panel.multiRequested.connect(self._safe("오른쪽 클릭 멀티", lambda: self._multi_by_right_click()))
+        self.thumbnail_panel.sendRequested.connect(self._safe("전송", lambda: self._on_send()))
+        self.thumbnail_panel.deleteRequested.connect(self._safe("사진 삭제", lambda: self._delete_selected()))
+        self.thumbnail_panel.sendDeleteRequested.connect(self._safe("전송(삭제)", lambda: self._send_and_delete()))
         self.thumbnail_panel.dayDeleteRequested.connect(self._delete_day)      # 촬영일 제목 줄의 삭제: 그 날 모두
         self.video_view.rightClicked.connect(self._safe("오른쪽 클릭 멀티", lambda: self._multi_by_right_click()))
         self.control_bar.multiToggled.connect(self._on_multi_toggled)
@@ -288,10 +293,6 @@ class MainWindow(QMainWindow):
         self.ref_bar.libraryRequested.connect(self._safe("참조 라이브러리", lambda: self.open_references()))
         self.ref_bar.hideRequested.connect(lambda: self._set_ref_bar_visible(False))
         self.control_bar.refsToggled.connect(lambda on: self._set_ref_bar_visible(on))
-        # '멀티' 버튼은 오른쪽 촬영 이미지 칸(OD · OS 위) — 촬영 도크의 숨은 버튼과 상태를 함께 쓴다
-        tb_multi = self.thumbnail_panel.btn_multi
-        self.control_bar.multi_mirrors.append(tb_multi)
-        tb_multi.clicked.connect(self._safe("멀티", lambda: self.control_bar.btn_multi.toggle()))
         self.control_bar.eyeChanged.connect(lambda _e: self._refresh_eye_status())   # HUD 눈 칩 + 자동 인식 상태
         self.control_bar.eyeChosen.connect(self._note_manual_eye)                   # OD · OS 를 직접 고름
         cfg = self.config
@@ -340,6 +341,11 @@ class MainWindow(QMainWindow):
         self._eye_signal_at = None             # 마지막 슬릿램프 좌우 신호 시각
         self._freeze_eye = None                # 정지 화면을 찍은 순간의 검사눈 (정지 중 좌우가 바뀌어도 그 사진은 이 눈)
         self._video_switches = []              # 녹화 중 좌우 전환 [(경과 초, 눈)] — 영상은 시작 눈으로 저장, 코멘트에 기록
+        start_eye = str(getattr(self.config, "start_eye", "OD") or "").upper()
+        if start_eye in ("OD", "OS"):
+            # 켜자마자 좌우가 골라져 있게 (설정 start_eye, 기본 OD) — 슬릿램프 좌우 신호가 오면 그 눈으로 바뀐다
+            self.control_bar.set_eye(start_eye)
+            self._eye_src = "default"
         self.usb_raw = usb_raw_input.create(QApplication.instance(), on_device_change=self._on_usb_device_change)
         self.usb_raw.watch(usb_buttons.key_of(b["key"]) for b in usb_buttons.load(self.config).values())
         self.usb_filter = usb_buttons.UsbButtonFilter(
@@ -447,6 +453,7 @@ class MainWindow(QMainWindow):
         # 빈 공간: 질환별 작은 아이콘 — 누르면 아래 참조 줄에 그 질환 사진 + 멀티 화면 (app/ui/dx_bar.py)
         self.dx_bar = DxBar()
         self.dx_bar.diseaseClicked.connect(self._on_dx_clicked)
+        self.dx_bar.preview_provider = self._dx_preview_paths       # 마우스를 올리면 그 질환 사진을 작게
         lay.addWidget(self.dx_bar)
         lay.addStretch(1)
 
@@ -461,7 +468,8 @@ class MainWindow(QMainWindow):
         lay.addWidget(tw)
         self._sync_theme_button()
         self._topbar_compact = False
-        self._topbar_full_w = 0
+        self._topbar_full_w = 0                # 질환 이름을 숨겼을 때(아이콘만)의 펼친 폭
+        self._topbar_label_w = 0               # 질환 아이콘 아래 이름까지 보일 때의 펼친 폭
         self._topbar_min_w = 0
         self._brand_texts = [w for w in bar.findChildren(QLabel) if w.objectName() in ("BrandTitle", "BrandSub")]
         bar.installEventFilter(self)
@@ -477,17 +485,39 @@ class MainWindow(QMainWindow):
         bar = getattr(self, "topbar", None)
         if bar is None:
             return
-        if not self._topbar_compact:
-            self._topbar_full_w = bar.layout().sizeHint().width()
         if not self._topbar_min_w:
             # 아이콘만 남겼을 때의 폭을 상단바 최소 폭으로 — 그보다 좁게는 눌리지 않는다
             self._set_topbar_compact(True)
             self._topbar_min_w = bar.layout().minimumSize().width()
             self._set_topbar_compact(False)
             bar.setMinimumWidth(self._topbar_min_w)
+        if not self._topbar_full_w:
+            self._measure_topbar()
         compact = bar.width() < self._topbar_full_w
+        # 넓으면 질환 아이콘 아래 이름까지 · 조금 좁으면 아이콘만(마우스를 올리면 이름 · 사진) · 더 좁으면 '질환 ▾' 메뉴
+        labels = not compact and bar.width() >= self._topbar_label_w
+        if labels != self.dx_bar.labels_visible():
+            self.dx_bar.set_labels(labels)
         if compact != self._topbar_compact:
             self._set_topbar_compact(compact)
+
+    def _measure_topbar(self) -> None:
+        """펼친 상단바의 폭을 질환 이름 없이 · 있이 두 번 잰다 (상태를 잠깐 바꿔 레이아웃을 다시 계산한 값).
+        상태가 바뀐 직후의 크기 기억으로 재면 실제보다 작게 나와 글자가 겹치므로, 질환 목록이 바뀔 때만 다시 잰다."""
+        lay = self.topbar.layout()
+        was_compact, was_labels = self._topbar_compact, self.dx_bar.labels_visible()
+        self._set_topbar_compact(False)
+        widths = {}
+        for labels in (False, True):
+            self.dx_bar.set_labels(labels)
+            self.dx_bar.layout().invalidate()
+            self.dx_bar.layout().activate()
+            lay.invalidate()
+            lay.activate()
+            widths[labels] = lay.sizeHint().width()
+        self._topbar_full_w, self._topbar_label_w = widths[False], max(widths[True], widths[False])
+        self.dx_bar.set_labels(was_labels)
+        self._set_topbar_compact(was_compact)
 
     def _set_topbar_compact(self, compact: bool) -> None:
         self._topbar_compact = compact
@@ -854,6 +884,10 @@ class MainWindow(QMainWindow):
         elif self._eye_pending is not None:
             level, text, note = "stale", f"신호 {self._eye_pending} 보류", "확인 필요"
             tip = "입력칸 · 다른 화면 · 다른 창에서 받은 슬릿램프 좌우 신호 — 촬영 화면으로 돌아오면 적용합니다"
+        elif self._eye_src == "default":
+            level, text, note = "manual", f"기본 {eye}", ""
+            tip = (f"프로그램을 켜면 {eye} 를 미리 골라 둡니다 (설정 파일 start_eye) — 슬릿램프를 환자 눈 쪽으로 움직여 "
+                   "신호가 오면 그 눈으로 바뀌고, OD · OS 를 직접 골라도 됩니다")
         elif self._eye_src == "unknown":
             level, text = "unknown", "미확인"
             note = "미확인" if eye == "NA" else "확인 필요"
@@ -1104,6 +1138,16 @@ class MainWindow(QMainWindow):
             self.dx_bar.set_categories(sample_import.sample_categories(self.db), self.db.references.categories())
         except Exception:  # noqa: BLE001
             log.warning("dx bar refresh failed", exc_info=True)
+        self._topbar_full_w = 0                          # 질환 수가 바뀌면 상단바 폭을 다시 잰다
+        QTimer.singleShot(0, self._fit_topbar)
+
+    def _dx_preview_paths(self, source: str, category: str) -> list:
+        """질환 아이콘 미리보기용 사진 파일 (썸네일 우선) — 샘플 질환 또는 등록한 참조 분류."""
+        if source == "sample":
+            refs = sample_import.sample_references(self.db, category=category)
+        else:
+            refs = self.db.references.list(category=category)
+        return [r.thumbnail_path or r.file_path for r in refs[:8]]
 
     def _on_dx_clicked(self, source: str, category: str) -> None:
         """질환 아이콘: 참조 줄을 열어 그 질환 사진을 보이고, 지금 환자 사진과 함께 멀티 화면으로.
@@ -1152,14 +1196,33 @@ class MainWindow(QMainWindow):
             self._capture_viewer = None
             old.close()
         keys = [k for k in (shortcuts.load(self.config).get("capture", ""),) if k]
-        dlg = ImageViewerDialog(cap, self, after_capture=True, capture_keys=keys)
+        try:
+            dx = (sample_import.sample_categories(self.db), self.db.references.categories())
+        except Exception:  # noqa: BLE001 — 질환 줄이 없어도 보기 창은 뜬다
+            log.warning("dx categories for viewer failed", exc_info=True)
+            dx = None
+        dlg = ImageViewerDialog(cap, self, after_capture=True, capture_keys=keys,
+                                dx_categories=dx, dx_preview=self._dx_preview_paths)
         dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         dlg.retakeRequested.connect(lambda d=dlg: self._retake_from_viewer(d))
+        dlg.dxClicked.connect(lambda s, c, d=dlg, cp=cap: self._dx_from_viewer(d, cp, s, c))
         dlg.finished.connect(lambda code, d=dlg, c=cap: self._on_capture_viewer_closed(d, c, code))
         self._capture_viewer = dlg
         dlg.showMaximized()
         dlg.raise_()
         dlg.activateWindow()
+
+    def _dx_from_viewer(self, dlg, cap, source: str, category: str) -> None:
+        """촬영 뒤 보기 창의 질환 아이콘 → 창을 닫고 방금 찍은 사진과 그 질환 샘플을 멀티 화면에 나란히."""
+        dlg.accept()
+        panel = self.thumbnail_panel
+        if [c.id for c in panel.selected_captures()] != [cap.id]:
+            panel.clear_selection()
+            if any(c.id == cap.id for c in panel._items):
+                panel.toggle_selection(cap)
+        if self.dx_bar.active() == (source, category):
+            self.dx_bar.set_active(None)             # 이미 켜진 질환이면 끄지 말고 다시 보이게
+        QTimer.singleShot(0, lambda: self._on_dx_clicked(source, category))
 
     def _retake_from_viewer(self, dlg) -> None:
         """보기 창에서 촬영 키 → 창을 닫고 바로 다시 찍는다."""
@@ -1410,8 +1473,13 @@ class MainWindow(QMainWindow):
                 self.multi_pro.set_grid(items)
             else:
                 self._exit_multi(clear=False)
+        elif caps and getattr(self.config, "live_multi", False) and self._mode == "capture" and not self._recording:
+            # 실시간 멀티화면(설정): 왼쪽 클릭으로 고르는 즉시 가운데 멀티 화면 — 다 빼면 위에서 라이브로 돌아감
+            self._enter_multi(self._multi_items())
+            self.statusBar().showMessage(f"실시간 멀티화면 · {len(caps)}장 — 다시 누르면 빼기, 다 빼면 라이브", 3000)
+            return
         if caps:
-            self.statusBar().showMessage(f"{len(caps)}장 선택 · '멀티'를 누르면 한 화면에 모아 봅니다", 4000)
+            self.statusBar().showMessage(f"{len(caps)}장 선택 · 사진 위에서 오른쪽 클릭 → 전송 · 삭제 · 멀티", 4000)
 
     def _on_refs_changed(self, refs: list) -> None:
         """참조 줄에서 고르면 바로 멀티 화면에 같이 (지금 환자 사진은 오른쪽 목록에서 고른 것)."""
@@ -1447,11 +1515,11 @@ class MainWindow(QMainWindow):
             return
         items = self._multi_items()
         if not items:
-            self.statusBar().showMessage("오른쪽 사진 목록에서 사진을 고르거나 사진 위에서 오른쪽 클릭하면 멀티 화면으로 봅니다", 5000)
+            self.statusBar().showMessage("오른쪽 사진 목록에서 사진을 고른 뒤 오른쪽 클릭 → '멀티' 로 한 화면에 모아 봅니다", 5000)
             return
         self._enter_multi(items)
-        self.statusBar().showMessage(f"멀티 화면 ({len(items)}장) — 사진 목록에서 오른쪽 클릭으로 더 넣기 · "
-                                     "'멀티' 를 다시 누르면 닫기", 5000)
+        self.statusBar().showMessage(f"멀티 화면 ({len(items)}장) — 사진 목록에서 한 번 눌러 더 넣기 · "
+                                     "촬영 도크 '초기화' 로 닫기", 5000)
 
     def _enter_multi(self, items: list) -> None:
         if self._quad:
@@ -1568,20 +1636,22 @@ class MainWindow(QMainWindow):
             log.warning("config save failed", exc_info=True)
 
     # ---- 전송 (폴더 · 클라우드 · PACS) ----
-    def _on_send(self) -> None:
+    def _on_send(self):
+        """고른 사진 전송. 보냈으면 SendResult, 그만두었으면 None."""
         from app.services import send_service as ss
         from app.ui.send_dialog import SendDialog
         p = self._current_patient
         if p is None:
             QMessageBox.information(self, "전송", "환자를 먼저 선택하세요.")
-            return
+            return None
         caps = self.thumbnail_panel.selected_captures()
         if not caps:
-            QMessageBox.information(self, "전송", "오른쪽 사진 목록에서 보낼 사진을 한 번씩 눌러 고른 뒤 '전송'을 누르세요.")
-            return
+            QMessageBox.information(self, "전송", "오른쪽 사진 목록에서 보낼 사진을 한 번씩 눌러 고른 뒤 "
+                                    "사진 위에서 오른쪽 클릭 → '전송' 을 누르세요.")
+            return None
         dlg = SendDialog(self.config, len(caps), self)
         if not dlg.exec():
-            return
+            return None
         formats = dlg.selected_formats()
         note = self.db.exam_notes.get(p.id, datetime.now().strftime("%Y-%m-%d"))
         notes = "\n".join(x for x in ((note or {}).get("exam_type") and f"[{note['exam_type']}]",
@@ -1605,6 +1675,7 @@ class MainWindow(QMainWindow):
         if b_open is not None and box.clickedButton() is b_open and folder:
             from app.ui.image_viewer import open_in_default_player
             open_in_default_player(folder)
+        return res
 
     def _write_send_pdf(self, path: str, patient, items: list, notes: str) -> None:
         from app.ui.pro.pro_workspace import caption_of
@@ -2149,6 +2220,56 @@ class MainWindow(QMainWindow):
         self.control_bar.set_status("영상 삭제됨" if ok else "이미 삭제된 영상입니다")
         return ok
 
+    def _send_and_delete(self) -> int:
+        """오른쪽 클릭 메뉴 '전송(삭제)': 보낸 뒤 이 PC 에서 삭제 — 모두 보냈을 때만 (건너뛰거나 오류가 있으면 지우지 않음)."""
+        caps = self.thumbnail_panel.selected_captures()
+        if not caps:
+            return 0
+        res = self._on_send()
+        if res is None:
+            return 0
+        if not res.ok or res.skipped:
+            QMessageBox.warning(self, "전송(삭제)", "모두 보내지 못해 이 PC 의 사진은 지우지 않았습니다.\n\n" + res.summary())
+            return 0
+        return self._delete_selected(confirm=True, title="전송(삭제)",
+                                     lead=f"보낸 {len(caps)}장을 이 PC 에서 삭제하시겠습니까?")
+
+    def _delete_selected(self, confirm: bool = True, title: str = "사진 삭제", lead: str = "") -> int:
+        """오른쪽 사진 목록에서 고른 사진 · 동영상 삭제 (오른쪽 클릭 메뉴 '삭제'). 확인 후 DB · 파일 · 썸네일을 지운다."""
+        p = self._current_patient
+        caps = self.thumbnail_panel.selected_captures()
+        if p is None or not caps:
+            return 0
+        n_photo = sum(1 for c in caps if c.media_type != "video")
+        n_video = len(caps) - n_photo
+        what = " · ".join(x for x in (f"사진 {n_photo}장" if n_photo else "",
+                                      f"동영상 {n_video}개" if n_video else "") if x)
+        if confirm:
+            ret = QMessageBox.question(
+                self, title,
+                (lead or f"고른 {what}을(를) 삭제하시겠습니까?") + "\n\n"
+                "DB 기록과 저장된 파일(썸네일 포함)이 지워지며 되돌릴 수 없습니다.\n"
+                "(지정 폴더에 복사된 사본은 남겨 둡니다)",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No)
+            if ret != QMessageBox.StandardButton.Yes:
+                return 0
+        if self._multi:
+            self._exit_multi(clear=False)            # 지울 사진이 멀티 칸에 남지 않게
+        try:
+            n = self.service.delete_captures(caps)
+        except Exception as e:  # noqa: BLE001
+            log.exception("selected delete failed")
+            QMessageBox.warning(self, "오류", f"사진 삭제 실패: {e}")
+            n = 0
+        self.thumbnail_panel.clear_selection()
+        self.thumbnail_panel.set_patient(p.id)
+        self.pro.reload(select_last=False)
+        if hasattr(self, "exam_screen"):
+            self.exam_screen.reload()
+        self.control_bar.set_status(f"고른 영상 {n}장 삭제됨")
+        return n
+
     def _delete_day(self, day: str, confirm: bool = True) -> int:
         """현재 환자가 그 날('YYYY-MM-DD') 촬영한 사진 · 동영상을 모두 삭제 (검사 소견은 남김)."""
         p = self._current_patient
@@ -2235,6 +2356,8 @@ class MainWindow(QMainWindow):
                 self._apply_theme()
             self._set_smart_bar_visible(self.config.smart_bar_visible, save=False)
             self.thumbnail_panel.set_split_eyes(bool(self.config.thumbs_split_eyes))
+            self.thumbnail_panel.right_click_action = getattr(self.config, "right_click_action", "menu")
+            self.thumbnail_panel.set_menu_items(getattr(self.config, "right_click_items", None))
             if not self._quad:
                 self.control_bar.split_count = int(self.config.split_count or 4)
             self.control_bar.count_saved = bool(getattr(self.config, "split_count_saved", False))

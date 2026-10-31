@@ -20,7 +20,7 @@ from app.ui.icon_button import IconTextButton
 from app.ui.theme import ICON, ICON_ACCENT, ICON_ON_ACCENT, ICON_RECORD
 
 _EYE_CODES = ["NA", "OD", "OS"]
-_EYE_BUTTONS = [("OD", "OD", "우안"), ("OS", "OS", "좌안"), ("NA", "—", "미지정")]
+_EYE_BUTTONS = [("OS", "OS", "좌안"), ("OD", "OD", "우안"), ("NA", "—", "미지정")]   # OS 왼쪽 · OD 오른쪽
 _BTN_W = 76            # 도크 버튼 고정 폭 (가장 긴 이름 '녹화 중지'·'정지영상' 기준)
 _BTN_W_COMPACT = 44    # 좁은 창(아이콘만)
 
@@ -394,7 +394,7 @@ class ControlBar(QFrame):
         self.eyeChosen.emit(code)
 
     def set_eye_status(self, level: str, text: str, tip: str = "") -> None:
-        """좌우 자동 인식 상태 칩: level = off(숨김) · unknown · device · manual · stale."""
+        """좌우 자동 인식 상태 칩: level = off(숨김) · unknown · device · manual(직접 · 시작 기본값) · stale."""
         lbl = self.eye_status
         lbl.setText(text)
         lbl.setToolTip(tip)

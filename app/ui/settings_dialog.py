@@ -73,6 +73,30 @@ class SettingsDialog(QDialog):
         self.start_home.setChecked(getattr(config, "start_screen", "home") != "capture")
         self.smart_visible = QCheckBox("촬영 화면에 Smart 도구줄 보이기")
         self.smart_visible.setChecked(bool(getattr(config, "smart_bar_visible", True)))
+        self.right_click = QComboBox()
+        self.right_click.addItem("메뉴 — 전송 · 삭제 · 멀티 중에서 고르기", "menu")
+        self.right_click.addItem("멀티 화면 바로", "multi")
+        self.right_click.setCurrentIndex(max(0, self.right_click.findData(getattr(config, "right_click_action", "menu"))))
+        self.right_click.setToolTip("오른쪽 사진 목록에서 사진을 마우스 오른쪽으로 눌렀을 때")
+        self.menu_items = {}
+        items_row = QHBoxLayout()
+        items_row.setContentsMargins(0, 0, 0, 0)
+        want = list(getattr(config, "right_click_items", None) or ["send", "multi", "delete"])
+        for key, text in (("send", "전송"), ("send_delete", "전송(삭제)"), ("multi", "멀티"), ("delete", "삭제")):
+            cb = QCheckBox(text)
+            cb.setChecked(key in want)
+            if key == "send_delete":
+                cb.setToolTip("보낸 뒤 이 PC 에서 삭제 — 모두 보냈을 때만, 확인 후")
+            self.menu_items[key] = cb
+            items_row.addWidget(cb)
+        items_row.addStretch(1)
+        self.menu_items_w = QWidget()
+        self.menu_items_w.setLayout(items_row)
+        self.right_click.currentIndexChanged.connect(
+            lambda _i: self.menu_items_w.setEnabled(self.right_click.currentData() == "menu"))
+        self.menu_items_w.setEnabled(self.right_click.currentData() == "menu")
+        self.live_multi = QCheckBox("사진 목록에서 사진을 왼쪽 클릭으로 고르면 바로 가운데 멀티 화면에 놓기 (다 빼면 라이브 화면으로)")
+        self.live_multi.setChecked(bool(getattr(config, "live_multi", False)))
         self.view_after = QCheckBox("사진을 찍으면 큰 화면으로 바로 보기 ('다시 촬영' · 촬영 키 · USB 버튼으로 돌아오기)")
         self.view_after.setChecked(bool(getattr(config, "view_after_capture", True)))
         self.split_count = QComboBox()
@@ -210,6 +234,9 @@ class SettingsDialog(QDialog):
         gform.addRow("Smart 도구줄", self.smart_visible)
         gform.addRow("촬영 후 보기", self.view_after)
         gform.addRow("사진 목록", self.split_eyes)
+        gform.addRow("사진 오른쪽 클릭", self.right_click)
+        gform.addRow("메뉴 항목", self.menu_items_w)
+        gform.addRow("실시간 멀티화면", self.live_multi)
         gform.addRow("분할 화면", self.split_count)
         gform.addRow("", self.split_ask)
         gform.addRow("효과음", self.sounds)
@@ -750,6 +777,9 @@ class SettingsDialog(QDialog):
         c.start_screen = "home" if self.start_home.isChecked() else "capture"
         c.smart_bar_visible = self.smart_visible.isChecked()
         c.view_after_capture = self.view_after.isChecked()
+        c.live_multi = self.live_multi.isChecked()
+        c.right_click_action = self.right_click.currentData() or "menu"
+        c.right_click_items = [k for k, cb in self.menu_items.items() if cb.isChecked()] or ["send", "multi", "delete"]
         c.thumbs_split_eyes = self.split_eyes.isChecked()
         c.split_count = int(self.split_count.currentData() or 4)
         c.split_count_saved = not self.split_ask.isChecked()

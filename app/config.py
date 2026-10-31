@@ -38,7 +38,7 @@ class AppConfig:
     video_quality: str = "normal"            # 동영상 화질: normal(일반 — 가볍고 파일 작음) | high(고화질) (app/capture/video_recorder.py)
     video_fallback_fourcc: str = "mp4v"      # ffmpeg 실패 시 cv2 폴백 코덱
     subfolder_template: str = "{chart_no}_{patient_id}/{date}"
-    thumbnail_max_side: int = 120
+    thumbnail_max_side: int = 480            # 사진 목록 썸네일 긴 변 (카드 약 230px × 레티나 2배 — 작으면 흐림)
     newest_on_top: bool = True
     split_count: int = 4                     # 분할 화면 칸 수 (2 · 4 · 6 · 8 · 16)
     split_count_saved: bool = False          # True = 칸 수를 한 번 골라 저장함 → 분할 버튼은 묻지 않고 그 칸 수로
@@ -67,6 +67,7 @@ class AppConfig:
     shortcuts: dict = field(default_factory=dict)   # 사용자 지정 단축키 {동작 id: "키"} (app/shortcuts.py)
     usb_buttons: dict = field(default_factory=dict)  # 슬릿램프 USB 버튼 {"1": {"key", "action"}} (app/usb_buttons.py, 비면 기본값)
     usb_eye_auto: bool = True                # 슬릿램프 좌우 신호(F6 → OD · F7 → OS)로 검사눈 자동 인식 (끄면 OD · OS 는 직접)
+    start_eye: str = "OD"                    # 프로그램을 켰을 때 미리 골라 둘 눈 OD · OS · NA(미지정) — 좌우 신호가 오면 그대로 바뀜
     usb_device_check: bool = True            # Windows Raw Input 으로 VID 04D9 / PID 1203 장치의 신호만 좌우 신호로 (app/usb_raw_input.py)
     # 백업 (app/services/backup_service.py) — 외장 하드 · 다른 드라이브의 '시작날짜+마지막날짜' 폴더 (예: 210908261028)
     backup_root: str = ""                    # 백업 위치 (비면 백업 안 함)
@@ -89,6 +90,9 @@ class AppConfig:
     smart_bar_visible: bool = True           # 촬영 화면의 Smart 도구줄 보이기 (숨겨도 자동 촬영 설정은 유지)
     ref_bar_visible: bool = False            # 촬영 화면의 참조 줄 보이기 (고른 참조 사진은 멀티 화면에 같이)
     multi_side_visible: bool = False         # 멀티 화면 오른쪽 메뉴(보정 · 편집 · 분석) 보이기 (기본: 접힘)
+    right_click_items: list = field(default_factory=lambda: ["send", "multi", "delete"])   # 메뉴 항목: send · send_delete · multi · delete
+    right_click_action: str = "menu"         # 사진 목록 오른쪽 클릭: menu(전송 · 삭제 · 멀티 메뉴) | multi(멀티 화면 바로)
+    live_multi: bool = False                 # 실시간 멀티화면: 사진 목록에서 왼쪽 클릭으로 고르면 바로 가운데 멀티 화면 (다 빼면 라이브로)
     view_after_capture: bool = True          # 사진을 찍으면 큰 화면으로 바로 보기 ('다시 촬영' 으로 촬영 화면 복귀)
     smart_best_shot: bool = True             # 사진 캡처 시 최근 0.6초 중 가장 선명한 프레임 저장
     smart_ready_pct: float = 85.0            # 초점 판정 기준 (최근 최고 선명도 대비 %)
@@ -159,7 +163,10 @@ class AppConfig:
         ok = {
             "photo_format": self.photo_format.lower() in ("png", "jpg", "jpeg"),
             "video_quality": self.video_quality in ("normal", "high"),
-            "thumbnail_max_side": self.thumbnail_max_side > 0,
+            "right_click_action": self.right_click_action in ("menu", "multi"),
+            "right_click_items": (isinstance(self.right_click_items, list) and bool(self.right_click_items)
+                                  and all(x in ("send", "send_delete", "multi", "delete") for x in self.right_click_items)),
+            "thumbnail_max_side": self.thumbnail_max_side >= 480,   # 예전 기본 120 은 흐려서 480 으로
             "capture_width": self.capture_width > 0,
             "capture_height": self.capture_height > 0,
             "camera_index": self.camera_index >= 0,

@@ -7,10 +7,11 @@ from __future__ import annotations
 
 from datetime import date
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QModelIndex, QStringListModel, Qt, QTimer, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
+    QCompleter,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -90,13 +91,23 @@ class PatientPanel(QFrame):
         self.search.setFixedWidth(170)
         self.search.addAction(icons.icon("search", ICON, 16), QLineEdit.ActionPosition.LeadingPosition)
         self.search.setClearButtonEnabled(True)
-        self.combo = QComboBox()
-        self.combo.setMinimumWidth(200)
+        # 환자 선택 목록(combo)은 화면에 두지 않는다 — 검색 칸에 치면 바로 아래에 결과가 뜨고 누르거나 Enter 로 고른다.
+        # (combo 는 '지금 환자' 를 담는 내부 목록으로 남겨 둠 — 다른 화면 · 시험이 같은 방식으로 쓴다)
+        self.combo = QComboBox(self)
         self.combo.setToolTip("환자 선택")
+        self.combo.hide()
+        self._matches: list = []
+        self._results = QStringListModel(self)
+        self.completer = QCompleter(self._results, self)
+        self.completer.setCompletionMode(QCompleter.CompletionMode.UnfilteredPopupCompletion)
+        self.completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self.completer.setMaxVisibleItems(12)
+        self.completer.setWidget(self.search)
+        self.completer.activated[QModelIndex].connect(lambda ix: self._pick_match(ix.row()))
         lay.addWidget(self.search)
-        lay.addWidget(self.combo)
 
         self.search.textChanged.connect(self._reload)
+        self.search.returnPressed.connect(self._pick_first)
         self.combo.currentIndexChanged.connect(self._on_select)
 
         self._reload()
@@ -151,10 +162,38 @@ class PatientPanel(QFrame):
             self.combo.setItemText(idx, f"{patient.name} ({patient.chart_no or '-'})")
             self._render_banner(patient)
 
+    def _pick_match(self, row: int) -> None:
+        """검색 결과 목록에서 고름 → 그 환자로 바꾸고 검색 칸을 비운다."""
+        if 0 <= row < len(self._matches):
+            pid = self._matches[row].id
+            QTimer.singleShot(0, lambda: self.select_patient(pid))   # 자동 완성이 칸에 글자를 넣은 뒤 비운다
+
+    def _pick_first(self) -> None:
+        """Enter: 결과 목록에서 고른 줄(없으면 첫 결과)로."""
+        if not self.search.text().strip() or not self._matches:
+            return
+        popup = self.completer.popup()
+        row = popup.currentIndex().row() if popup.isVisible() and popup.currentIndex().isValid() else 0
+        self.completer.popup().hide()
+        self.select_patient(self._matches[max(0, row)].id)
+
+    def _show_matches(self, q: str) -> None:
+        self._results.setStringList([f"{p.name} ({p.chart_no or '-'})" for p in self._matches])
+        if q and self._matches and self.search.hasFocus():
+            self.completer.complete()
+        else:
+            self.completer.popup().hide()
+
+    def _update_placeholder(self, p) -> None:
+        self.search.setPlaceholderText(f"환자: {p.name} ({p.chart_no or '-'})" if p is not None else "환자 검색")
+        self.search.setToolTip(("지금 환자: " + f"{p.name} ({p.chart_no or '-'})\n" if p is not None else "")
+                               + "이름 · 차트번호 · 연락처로 검색 — 결과를 누르거나 Enter 로 고르기")
+
     def _reload(self, *_):
         q = self.search.text().strip()
         prev = self.current_patient() if hasattr(self, "_patients") else None
         self._patients = list(self.db.patients.search(q) if q else self.db.patients.list_all())
+        self._matches = list(self._patients) if q else []
         # 검색어를 쳐도 지금 환자 선택은 유지 (검색 결과에 없으면 맨 앞에 남겨 둔다) — 다른 환자로 촬영되는 일 방지
         if prev is not None and q and not any(p.id == prev.id for p in self._patients):
             self._patients.insert(0, prev)
@@ -166,11 +205,13 @@ class PatientPanel(QFrame):
         if self._patients:
             self.combo.setCurrentIndex(sel)
         self.combo.blockSignals(False)
+        self._show_matches(q)
         self._on_select()
 
     def _on_select(self, *_):
         p = self.current_patient()
         self._render_banner(p)
+        self._update_placeholder(p)
         self.patientChanged.emit(p)
 
     def new_patient(self) -> bool:

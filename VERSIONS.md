@@ -212,3 +212,20 @@ v1.8.0 이후 `main` 에 들어온 변경을 모두 합친 최종판입니다 (`
 - 사진 폴더가 없으면 '백업 ✓' 대신 경고 (`res["source_missing"]`, dirty 유지).
 - `CapturesDAO.delete` · `ExamsDAO.delete`: 다른 기록이 아직 가리키는 file_path · thumbnail_path 는 None 으로 돌려 지우지 않음.
 - `ensure_bundled_samples`: 모든 예외를 잡아 시작을 막지 않음. 웹 촬영일 삭제 확인 창에 환자 이름.
+
+## v1.20.2 — 2026-10-31
+- **사진 목록 오른쪽 클릭 메뉴**(`ThumbnailPanel.context_menu` · `menu_actions`): 전송(`sendRequested` → `_on_send`) ·
+  삭제(`deleteRequested` → `MainWindow._delete_selected`, 확인 · 멀티 닫기) · 멀티(`multiRequested`). 목록 위 '멀티' 버튼(`btn_multi`) 삭제.
+  설정 '사진 오른쪽 클릭' `config.right_click_action` = menu(기본) | multi(멀티 화면 바로), '메뉴 항목' `config.right_click_items`
+  (send · send_delete · multi · delete — 전송(삭제)는 `MainWindow._send_and_delete`, 모두 보냈을 때만 확인 후 삭제).
+- **눈 표시**: 썸네일 OD 오른쪽 위 · OS 왼쪽 위 크게(`EYE_BADGE_H`), 필터 · 눈 고르기 순서 OS · OD.
+- **환자 드롭다운 없앰**: `PatientPanel.combo` 숨김(내부 목록), 검색 결과는 `QCompleter` 팝업 · Enter = 첫 결과, 지금 환자는 검색 칸 안내 글.
+- **썸네일 뒤에서 선명하게**: `thumbnail_widget._Upgrader`(QThreadPool) — 작은 썸네일을 원본에서 480px 로 다시 만들어 파일 교체 · 위젯 갱신.
+- **질환 아이콘 이름 · 미리보기**(`app/ui/dx_bar.py`): `short_label` (4자 이내), `DxPreview`(마우스를 올리면 사진 최대 4장,
+  `MainWindow._dx_preview_paths`), 창 폭에 따라 이름 → 아이콘만 → '질환 ▾' (`_measure_topbar` 가 두 폭을 직접 잼).
+- **시작 눈** `config.start_eye` (기본 OD, 상태 칩 '기본 OD', `_eye_src = "default"`).
+- **촬영 뒤 보기 창 질환 아이콘**: `ImageViewerDialog(dx_categories=, dx_preview=)` · `dxClicked` → `MainWindow._dx_from_viewer`.
+- **썸네일 선명도**: `thumbnail_max_side` 120 → 480 (그 미만은 480 으로), `ThumbnailWidget` 이 작은 썸네일은 원본을 `QImageReader` 로
+  줄여 읽고 `devicePixelRatio` 크기로 그림, 캐시 LRU 250.
+- **실시간 멀티화면** `config.live_multi` (설정 → 일반, 기본 끔): 선택이 생기면 `_enter_multi`, 다 빼면 라이브.
+

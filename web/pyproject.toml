@@ -1,6 +1,6 @@
 [project]
 name = "slitlamp-web"
-version = "1.20.3"
+version = "1.20.4"
 description = "안과 슬릿램프 디지털 영상 시스템 - 웹앱 (FastAPI + 브라우저 캡처)"
 requires-python = ">=3.11"
 # requirements.txt 와 같은 목록 (호스팅 서비스가 둘 중 어느 쪽을 읽어도 같게 설치되도록)

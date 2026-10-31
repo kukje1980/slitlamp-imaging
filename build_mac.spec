@@ -9,7 +9,7 @@ import os
 
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
-APP_VERSION = "1.20.3"
+APP_VERSION = "1.20.4"
 BRAND = os.environ.get("SLITLAMP_BUILD_BRAND", "default").lower()
 AGENT = os.environ.get("SLITLAMP_BUILD_EDITION", "standard").lower() == "agent"
 # 판별 (앱 이름, 표시 이름, 아이콘, 번들 ID, 런타임 훅)

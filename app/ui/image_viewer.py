@@ -1,7 +1,8 @@
 """썸네일 · 멀티 칸을 두 번 누르면 뜨는 큰 보기. 동영상은 OS 기본 플레이어로 재생.
 
 사진은 Pro 검토와 같은 캔버스(ImageCanvas): 기본 도구는 돋보기 — 사진을 누르고 있는 동안 확대 렌즈,
-마우스 휠 = 확대 · 축소, '이동' 으로 바꾸면 끌어서 옮기기, '맞춤' = 창에 맞춤.
+마우스 휠 = 확대 · 축소, 확대한 사진은 왼쪽 버튼으로 끌어 옮기기(돋보기 도구 그대로), '이동' 도구도 끌어서 옮기기,
+'맞춤' = 창에 맞춤.
 
 하단 '삭제' 버튼(Delete)을 누르고 확인하면 대화상자가 ``ImageViewerDialog.Deleted`` 코드로 닫히고,
 실제 삭제(DB·파일)는 호출한 쪽(메인 창)이 수행한다.
@@ -113,7 +114,7 @@ class ImageViewerDialog(QDialog):
         bar.setSpacing(4)
         self.tool_buttons = {}
         group = QButtonGroup(self)
-        for tool, text, icon, tip in (("magnify", "돋보기", "lens", "사진을 누르고 있는 동안 확대 렌즈 (휠: 확대 · 축소)"),
+        for tool, text, icon, tip in (("magnify", "돋보기", "lens", "사진을 누르고 있는 동안 확대 렌즈 (휠: 확대 · 축소 — 확대하면 끌어서 이동)"),
                                       ("pan", "이동", "hand", "끌어서 옮기기 (휠: 확대 · 축소)")):
             b = QPushButton(icons.gap(text))
             b.setCheckable(True)
@@ -133,7 +134,7 @@ class ImageViewerDialog(QDialog):
         self.b_fit.setToolTip("창에 맞춤")
         self.b_fit.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         bar.addWidget(self.b_fit)
-        hint = QLabel("누르고 있으면 확대 렌즈 · 휠로 확대 · 축소"
+        hint = QLabel("누르고 있으면 확대 렌즈 · 휠로 확대 · 축소 · 확대하면 끌어서 이동"
                       + ("   ·   '다시 촬영' 또는 촬영 키 · USB 버튼으로 촬영 화면으로" if self.after_capture else ""))
         hint.setObjectName("Muted")
         bar.addWidget(hint)

@@ -1,6 +1,8 @@
 """Pro 모드 이미지 캔버스 (보기 + 편집).
 
 - 휠 확대/축소, 드래그 이동(Pan), 화면 맞춤(Fit), 돋보기(누르는 동안 확대 렌즈)
+  돋보기 도구에서도 사진이 창보다 크게 확대돼 있으면 왼쪽 버튼으로 끌어 사진을 옮긴다 (손 모양 커서) —
+  창에 맞는 크기(맞춤 · 축소)일 때만 누르는 동안 확대 렌즈
 - 이미지 보정(Adjust) 적용 — 원본(_orig)은 보존, 편집 결과는 _base(기하) + _adj(보정) + _ann(주석)
 - 기하 편집: 90° 회전, 좌우/상하 반전, 자르기 — 주석·측정 좌표도 함께 변환
 - 주석: 텍스트, 화살표, 원 / 측정: 길이(px 또는 보정된 mm), 각도(3점)
@@ -18,7 +20,7 @@ import math
 import time
 
 import numpy as np
-from PySide6.QtCore import QLineF, QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QLineF, QPoint, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -124,6 +126,7 @@ class ImageCanvas(QGraphicsView):
         self._drag: QPointF | None = None
         self._angle_pts: list = []
         self._lens: QPointF | None = None
+        self._pan_from: QPoint | None = None   # 돋보기 도구에서 확대된 사진을 끌어 옮기는 중 (마지막 마우스 위치)
         self.lens_zoom = 2.5
         self.lens_radius = 90
         self.px_per_mm = 0.0
@@ -138,6 +141,9 @@ class ImageCanvas(QGraphicsView):
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
         self.setFrameShape(QGraphicsView.Shape.NoFrame)
         self.setMinimumSize(320, 240)
+        # 확대 · 축소 · 창 크기 · 사진이 바뀌어 옮길 수 있는지가 달라지면 커서(손 ↔ 십자)를 바꾼다
+        self.horizontalScrollBar().rangeChanged.connect(self._update_cursor)
+        self.verticalScrollBar().rangeChanged.connect(self._update_cursor)
 
     # ================= 이미지 / 상태 =================
     def set_image(self, frame: np.ndarray | None, keep_view: bool = False,
@@ -150,8 +156,11 @@ class ImageCanvas(QGraphicsView):
             self._ann = []
             self._undo.clear()
             self._redo.clear()
+        panning = self._pan_from if keep_view and frame is not None else None
         self._cancel_temp()
+        self._pan_from = panning                       # 라이브처럼 같은 보기로 새 프레임만 바뀌면 끌던 이동은 이어서
         self._refresh()
+        self._update_cursor()
         if frame is not None and (not keep_view or first):
             self._auto_fit = True
             self.fit()
@@ -578,7 +587,26 @@ class ImageCanvas(QGraphicsView):
             self.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
         else:
             self.setDragMode(QGraphicsView.DragMode.NoDrag)
-            self.viewport().setCursor(Qt.CursorShape.CrossCursor)
+            self._update_cursor()
+
+    def can_pan(self) -> bool:
+        """사진이 창보다 크게 확대돼 있어 끌어서 옮길 수 있는지 (스크롤할 곳이 있음)."""
+        if self._base is None:
+            return False
+        h, v = self.horizontalScrollBar(), self.verticalScrollBar()
+        return h.maximum() > h.minimum() or v.maximum() > v.minimum()
+
+    def _update_cursor(self, *_args) -> None:
+        """돋보기 도구: 확대돼 옮길 수 있으면 손(끌어서 이동), 아니면 십자(누르면 확대 렌즈)."""
+        if self._tool == "pan":
+            return
+        if self._pan_from is not None:
+            shape = Qt.CursorShape.ClosedHandCursor
+        elif self._tool == "magnify" and self.can_pan():
+            shape = Qt.CursorShape.OpenHandCursor
+        else:
+            shape = Qt.CursorShape.CrossCursor
+        self.viewport().setCursor(shape)
 
     def _cancel_temp(self) -> None:
         self._remove(self._temp)
@@ -586,6 +614,9 @@ class ImageCanvas(QGraphicsView):
         self._drag = None
         self._angle_pts = []
         self._lens = None
+        if self._pan_from is not None:
+            self._pan_from = None
+            self._update_cursor()
 
     def _show_temp(self, a: dict) -> None:
         self._remove(self._temp)
@@ -615,10 +646,25 @@ class ImageCanvas(QGraphicsView):
                 self._cancel_temp()
                 self.add_angle(a, v, c)
         elif self._tool == "magnify":
-            self._lens = event.position()
-            self.viewport().update()
+            if self.can_pan():                         # 확대된 사진: 왼쪽 버튼으로 끌어 옮기기
+                self._pan_from = event.position().toPoint()
+                self._update_cursor()
+            else:                                      # 맞춤 크기: 누르는 동안 확대 렌즈
+                self._lens = event.position()
+                self.viewport().update()
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if self._pan_from is not None and not event.buttons() & Qt.MouseButton.LeftButton:
+            self._pan_from = None                      # 놓는 순간을 못 받았으면 (창 밖에서 놓음 등) 이동 끝
+            self._update_cursor()
+        if self._pan_from is not None:
+            pos = event.position().toPoint()
+            delta = pos - self._pan_from
+            self._pan_from = pos
+            h, v = self.horizontalScrollBar(), self.verticalScrollBar()
+            h.setValue(h.value() + (delta.x() if self.isRightToLeft() else -delta.x()))
+            v.setValue(v.value() - delta.y())
+            return
         if self._tool == "magnify" and self._lens is not None:
             self._lens = event.position()
             self.viewport().update()
@@ -639,6 +685,10 @@ class ImageCanvas(QGraphicsView):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        if self._pan_from is not None and event.button() == Qt.MouseButton.LeftButton:
+            self._pan_from = None
+            self._update_cursor()
+            return
         if self._tool == "magnify":
             self._lens = None
             self.viewport().update()

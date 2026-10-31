@@ -1,6 +1,6 @@
 [project]
 name = "slitlamp-imaging"
-version = "1.20.3"
+version = "1.20.4"
 description = "안과 슬릿램프 디지털 영상 시스템 (HDMI 캡처/환자 DB)"
 requires-python = ">=3.11"
 

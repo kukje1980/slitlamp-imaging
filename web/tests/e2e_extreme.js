@@ -28,6 +28,9 @@ const check = (name, ok, info = '') => { results.push({ name, ok, info }); conso
   const ctx = await browser.newContext({ acceptDownloads: true, permissions: ['camera'] });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => console.log('PAGEERROR', e.message));
+  // v1.20.0 의 '촬영 직후 큰 화면 보기'(기본 켬)는 창이 떠서 버튼 연타를 막는다 — 연타 시나리오는 끄고, 10) 에서 따로 켜서 시험
+  await page.addInitScript(() => { try { if (localStorage.getItem('slitlamp-view-after') === null) localStorage.setItem('slitlamp-view-after', '0'); } catch (_) {} });
+  const viewAfter = (on) => page.evaluate((v) => { const c = document.getElementById('view-after-capture'); c.checked = v; c.dispatchEvent(new Event('change')); }, on);
   // 촬영 화면으로 들어가 카메라 영상이 나올 때까지 (홈 화면 → '촬영', 필요하면 '카메라 시작')
   const ready = async () => {
     await page.waitForFunction(() => window.SlitApp, null, { timeout: 15000 });
@@ -138,6 +141,56 @@ const check = (name, ok, info = '') => { results.push({ name, ok, info }); conso
   const disabled = await page.evaluate(() => document.getElementById('btn-capture').disabled);
   await page.click('#btn-capture', { force: true, timeout: 2000 }).catch(() => {}); await sleep(1500);
   check('카메라 끊긴 뒤에는 촬영 버튼이 꺼지고 멈춘 화면이 저장되지 않음', disabled && (await caps(A.id)).length === n0);
+
+  // 10) 보기 창 Delete 키 — 확인 창에서 '취소' 하면 그대로, '확인' 하면 열어 둔 그 한 장만 (촬영 직후 보기 창)
+  //     (여기부터 확인 창은 하나의 핸들러로 — dialogAction 에 따라 취소 / 확인)
+  let dialogAction = 'dismiss', msg = '';
+  page.on('dialog', async (d) => { msg = d.message(); try { if (dialogAction === 'accept') await d.accept(); else await d.dismiss(); } catch (_) {} });
+  await page.goto(BASE + '/').catch(() => {});
+  await ready();
+  await select(A.id); await sleep(500);
+  await viewAfter(true);
+  const nA = (await caps(A.id)).length;
+  await page.click('#btn-capture');                                           // 촬영 직후 큰 화면 보기 창이 열린다
+  const viewerOpen = () => page.evaluate(() => document.getElementById('viewer-dialog').open);
+  await page.waitForFunction(() => document.getElementById('viewer-dialog').open, null, { timeout: 10000 }).catch(() => {});
+  await sleep(300);
+  const opened = await page.evaluate(() => window.SlitApp.state.viewing && window.SlitApp.state.viewing.id);
+  check('촬영 직후 보기 창이 열림 (삭제 시험 준비)', !!opened && (await caps(A.id)).length === nA + 1, `viewing=${opened}`);
+  dialogAction = 'dismiss'; msg = '';
+  await page.keyboard.press('Delete'); await sleep(800);
+  check('보기 창 Delete 키 → 확인 창에서 취소하면 아무것도 지우지 않음', (await viewerOpen()) && msg.includes('삭제') && (await caps(A.id)).length === nA + 1,
+        `open=${await viewerOpen()} msg=${msg.slice(0, 20)}`);
+  dialogAction = 'accept'; msg = '';
+  await page.keyboard.press('Delete'); await sleep(1500);
+  const leftA = await caps(A.id);
+  check('보기 창 Delete 키 → 확인하면 열어 둔 그 한 장만 삭제', leftA.length === nA && !leftA.some(c => c.id === opened) && msg.includes('되돌릴 수 없') && !(await viewerOpen()),
+        `A=${leftA.length} (기대 ${nA}) msg=${msg.slice(0, 30)}`);
+  dialogAction = 'dismiss';
+  await viewAfter(false);
+
+  // 11) 촬영일 삭제 — 확인 창에 환자 이름 · 취소하면 그대로, 확인하면 그 환자의 그 날만 (다른 환자는 그대로)
+  const until = async (cond, ms = 15000) => { const t = Date.now(); while (Date.now() - t < ms) { if (await cond()) return true; await sleep(200); } return cond(); };
+  await select(B.id); await sleep(400);
+  const nB0 = (await caps(B.id)).length;
+  await page.click('#btn-capture');
+  await until(async () => (await caps(B.id)).length === nB0 + 1);
+  await page.click('#btn-capture');
+  await until(async () => (await caps(B.id)).length === nB0 + 2);                  // 느린 PC 에서도 저장이 끝난 뒤에
+  await sleep(500);
+  const nB = (await caps(B.id)).length;
+  check('촬영일 삭제 시험 준비: 나환자 사진 2장', nB === nB0 + 2, `B=${nB}`);
+  await select(A.id); await sleep(800);
+  await page.waitForSelector('#thumb-list .thumb-day-del', { timeout: 8000 });
+  const nA2 = (await caps(A.id)).length;
+  dialogAction = 'dismiss'; msg = '';
+  await page.click('#thumb-list .thumb-day-del'); await sleep(800);
+  check('촬영일 삭제 → 확인 창에 환자 이름 · 취소하면 그대로', msg.includes('가환자') && (await caps(A.id)).length === nA2, `msg=${msg.slice(0, 40)}`);
+  dialogAction = 'accept'; msg = '';
+  await page.click('#thumb-list .thumb-day-del');
+  await until(async () => (await caps(A.id)).length === 0, 30000); await sleep(500);
+  check('촬영일 삭제 → 그 환자의 그 날만 지워지고 다른 환자는 그대로', (await caps(A.id)).length === 0 && (await caps(B.id)).length === nB,
+        `A=${(await caps(A.id)).length} B=${(await caps(B.id)).length} (기대 0 / ${nB})`);
 
   await browser.close(); srv.kill();
   fs.rmSync(DATA, { recursive: true, force: true });

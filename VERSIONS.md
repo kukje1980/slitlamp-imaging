@@ -202,3 +202,13 @@ v1.8.0 이후 `main` 에 들어온 변경을 모두 합친 최종판입니다 (`
   촬영 단축키(기본 C)는 창을 닫고 바로 다시 찍음(`retakeRequested`), USB 버튼도 창을 닫고 바로 동작(`_usb_context`). 전체 화면에서는 뜨지 않음.
   설정 → 일반 → '촬영 후 보기' (`config.view_after_capture`, 기본 켬).
 - 웹: 촬영 직후 큰 화면 보기만 같음 (`#viewer-retake`, 촬영 키 = 닫고 다시 찍기, 설정 '촬영 후 보기' `slitlamp-view-after`). 질환 아이콘 · 멀티 메뉴 접기는 앱 전용.
+
+## v1.20.1 — 2026-10-31
+- **백업 · 삭제 극한 테스트 안전 수정** (`tests/test_extreme_v120.py` 25개 · `web/tests/test_extreme_v120.py` 7개 · e2e 삭제 시나리오 2개).
+- 백업 위치가 사진 · 참조 영상 폴더 안이면 실행 시점에도 거부 (`BackupManager._run` 의 `describe_target` 검사, `plan_tree` 는 backup_info.json 이
+  있는 폴더를 건너뜀) — 자기 자신 복사로 두 배씩 커지던 것.
+- 복사 도중 하드가 빠지면 내장 디스크에 같은 경로의 폴더를 다시 만들던 것 → `copy_file` · `_atomic_write` · `snapshot_db` 의 `anchor`
+  (백업 폴더의 backup_info.json) 확인, `_mkdir_guarded` 가 만든 빈 폴더를 되돌리고 `DriveMissing`.
+- 사진 폴더가 없으면 '백업 ✓' 대신 경고 (`res["source_missing"]`, dirty 유지).
+- `CapturesDAO.delete` · `ExamsDAO.delete`: 다른 기록이 아직 가리키는 file_path · thumbnail_path 는 None 으로 돌려 지우지 않음.
+- `ensure_bundled_samples`: 모든 예외를 잡아 시작을 막지 않음. 웹 촬영일 삭제 확인 창에 환자 이름.

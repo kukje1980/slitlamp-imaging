@@ -66,14 +66,26 @@ class ExamsDAO:
             return cur.lastrowid
 
     def delete(self, eid: int) -> List[dict]:
-        """검사와 그 캡처 레코드를 지우고, 디스크 정리용 경로 목록을 반환한다."""
+        """검사와 그 캡처 레코드를 지우고, 디스크 정리용 경로 목록을 반환한다.
+
+        다른 기록(다른 검사 · 다른 환자)이 아직 같은 파일을 가리키면 그 경로는 None 으로 돌려준다 — 지우지 않게.
+        """
         with self._lock, self._c:
             rows = self._c.execute(
                 "SELECT file_path, export_path, thumbnail_path FROM captures WHERE exam_id=?", (eid,)
             ).fetchall()
             self._c.execute("DELETE FROM captures WHERE exam_id=?", (eid,))
             self._c.execute("DELETE FROM exams WHERE id=?", (eid,))
-        return [dict(r) for r in rows]
+            out = []
+            for r in rows:
+                row = dict(r)
+                for key in ("file_path", "thumbnail_path"):
+                    p = row.get(key)
+                    if p and self._c.execute(
+                            "SELECT 1 FROM captures WHERE file_path=? OR thumbnail_path=? LIMIT 1", (p, p)).fetchone():
+                        row[key] = None
+                out.append(row)
+            return out
 
     @staticmethod
     def _row(r) -> Optional[Exam]:

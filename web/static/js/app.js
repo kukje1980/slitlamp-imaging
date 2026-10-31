@@ -1317,7 +1317,8 @@
     if (deletingDay || !caps || !caps.length) return 0;
     const nPhoto = caps.filter((c) => c.media_type !== 'video').length, nVideo = caps.length - nPhoto;
     const what = [nPhoto ? `사진 ${nPhoto}장` : '', nVideo ? `동영상 ${nVideo}개` : ''].filter(Boolean).join(' · ');
-    if (!confirm(`${day.replace(/-/g, '.')} 촬영 영상을 모두 삭제하시겠습니까?\n\n${what} — 저장된 파일과 기록이 함께 지워지며 되돌릴 수 없습니다.\n(그 날의 검사 소견은 남겨 둡니다)`)) return 0;
+    const who = state.patients.find((p) => p.id === caps[0].patient_id);          // 누구의 영상인지 확인 창에 (앱과 같게)
+    if (!confirm(`${who ? who.name + ' 환자의 ' : ''}${day.replace(/-/g, '.')} 촬영 영상을 모두 삭제하시겠습니까?\n\n${what} — 저장된 파일과 기록이 함께 지워지며 되돌릴 수 없습니다.\n(그 날의 검사 소견은 남겨 둡니다)`)) return 0;
     deletingDay = true;
     let n = 0;
     try {

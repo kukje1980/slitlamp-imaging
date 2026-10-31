@@ -187,7 +187,7 @@ def ensure_bundled_samples(db, config) -> Optional[SampleImportResult]:
         return None
     try:
         result = import_samples(db, config, src)
-    except (OSError, ValueError):
+    except Exception:  # noqa: BLE001  — DB 잠김 · 메모리 부족 등 무엇이든: 샘플 등록 실패가 프로그램 시작을 막으면 안 된다
         log.warning("bundled sample import failed", exc_info=True)
         return None
     if not result.failed:

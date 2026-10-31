@@ -9,7 +9,7 @@
 
 #define MyAppName "슬릿램프 영상 시스템 Explorer"
 #define MyAppNameEn "SlitLampExplorer"
-#define MyAppVersion "1.20.0"
+#define MyAppVersion "1.20.1"
 #define MyAppPublisher "Kukje"
 #define MyAppExeName "SlitLampExplorer.exe"
 

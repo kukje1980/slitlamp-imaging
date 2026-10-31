@@ -119,6 +119,7 @@ class MultiView(QWidget):
     activeChanged = Signal(object)        # ImageCanvas | None — 편집 대상 칸이 바뀜
     edited = Signal(object)               # ImageCanvas — 그 칸의 편집 상태가 바뀜
     calibrated = Signal(float)            # 칸에서 눈금 보정 (px/mm)
+    contextRequested = Signal(object, object)   # (Capture | RefCapture, 화면 좌표 QPoint) — 칸에서 마우스 오른쪽
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -160,6 +161,8 @@ class MultiView(QWidget):
                 cv.edited.connect(lambda cv=cv: self.edited.emit(cv))
                 cv.calibrated.connect(self.calibrated.emit)
                 cv.viewport().installEventFilter(self)
+                cv.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+                cv.customContextMenuRequested.connect(lambda pos, c=cell: self._context(c, pos))
             else:
                 cell.cap = cap                         # 코멘트 등이 바뀐 새 기록으로
             cells.append(cell)
@@ -248,6 +251,13 @@ class MultiView(QWidget):
                 c.canvas.set_image(c.canvas.original())
                 c.canvas.set_adjust(Adjust())
                 self.edited.emit(c.canvas)
+
+    def _context(self, cell, pos) -> None:
+        """칸에서 마우스 오른쪽 → 그 칸을 편집 대상(노란 테두리)으로 하고 메뉴를 띄우게 알린다."""
+        if cell not in self._cells:
+            return
+        self.set_active(cell)
+        self.contextRequested.emit(cell.cap, cell.canvas.viewport().mapToGlobal(pos))
 
     def eventFilter(self, obj, ev):  # noqa: N802
         if ev.type() == QEvent.Type.MouseButtonDblClick and self._tool in ("magnify", "pan"):

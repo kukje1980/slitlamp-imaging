@@ -298,6 +298,10 @@ class MainWindow(QMainWindow):
         self.multi_view.cellActivated.connect(self._on_multi_cell_activated)
         self.multi_pro.savedCapture.connect(self._on_pro_saved)          # 편집본 · 분석 결과 · 코멘트
         self.multi_pro.patientUpdated.connect(self._on_pro_patient_updated)
+        # 멀티 칸 아이콘 줄 · 오른쪽 클릭 메뉴: 전송 · 삭제 · 멀티에서 빼기 (편집 · 분석은 오른쪽 메뉴를 폄)
+        self.multi_pro.cellSendRequested.connect(lambda cap: self._safe("멀티 전송", lambda: self._multi_send(cap))())
+        self.multi_pro.cellDeleteRequested.connect(lambda cap: self._safe("멀티 삭제", lambda: self._multi_delete(cap))())
+        self.multi_pro.cellRemoveRequested.connect(lambda cap: self._safe("멀티 빼기", lambda: self._multi_remove(cap))())
         self.ref_bar.selectionChanged.connect(self._safe("참조", lambda: self._on_refs_changed(self.ref_bar.selected_refs())))
         self.ref_bar.libraryRequested.connect(self._safe("참조 라이브러리", lambda: self.open_references()))
         self.control_bar.eyeChanged.connect(lambda _e: self._refresh_eye_status())   # HUD 눈 칩 + 자동 인식 상태
@@ -1286,6 +1290,7 @@ class MainWindow(QMainWindow):
                                                    lambda d=dlg, c=cap: self._send_from_viewer(d, c, delete=True)))
         dlg.dxClicked.connect(lambda s, c, d=dlg, cp=cap: self._dx_from_viewer(d, cp, s, c))
         dlg.dxPhotoClicked.connect(lambda s, c, i, d=dlg, cp=cap: self._dx_from_viewer(d, cp, s, c, index=i))
+        dlg.editRequested.connect(self._safe("보기 창 편집 · 분석", lambda d=dlg, c=cap: self._edit_from_viewer(d, c)))
         dlg.finished.connect(lambda code, d=dlg, c=cap: self._on_capture_viewer_closed(d, c, code))
         self._capture_viewer = dlg
         dlg.showMaximized()
@@ -1308,6 +1313,24 @@ class MainWindow(QMainWindow):
         if self.dx_bar.active() == (source, category):
             self.dx_bar.set_active(None)             # 이미 켜진 질환이면 끄지 말고 다시 보이게
         QTimer.singleShot(0, lambda: self._on_dx_clicked(source, category))
+
+    def _edit_from_viewer(self, dlg, cap) -> None:
+        """촬영 직후 큰 화면의 '편집 · 분석' → 창을 닫고 이 사진만 멀티 화면에 놓고 오른쪽 보정 · 편집 · 분석 메뉴를 편다."""
+        dlg.accept()
+        panel = self.thumbnail_panel
+        self.ref_bar.clear_selection()
+        self.dx_bar.set_active(None)
+        if [c.id for c in panel.selected_captures()] != [cap.id]:
+            panel.clear_selection()
+            if any(c.id == cap.id for c in panel._items):
+                panel.toggle_selection(cap)
+        items = self._multi_items() or [cap]
+        if self._multi:
+            self.multi_pro.set_grid(items)
+        else:
+            self._enter_multi(items)
+        self.multi_pro.set_side_visible(True)
+        self.statusBar().showMessage("편집 · 분석 — 오른쪽 보정 · 편집 · 분석 메뉴 (다 쓰면 '편집본 저장')", 5000)
 
     def _retake_from_viewer(self, dlg) -> None:
         """보기 창에서 촬영 키 → 창을 닫고 초기화(기본) 또는 바로 다시 찍기 (설정 capture_in_view)."""
@@ -1643,6 +1666,48 @@ class MainWindow(QMainWindow):
         if clear:
             self.thumbnail_panel.clear_selection()
             self.ref_bar.clear_selection()
+
+    def _multi_send(self, cap):
+        """멀티 칸 '전송' — 그 사진 1장 (편집한 내용은 '편집본 저장' 한 뒤 그 편집본을 보내야 들어감)."""
+        log.info("버튼: 멀티 칸 전송")
+        if is_reference(cap):
+            return None
+        res = self._send_captures([cap])
+        if res is not None:
+            self.statusBar().showMessage(f"전송: {len(res.sent)}개 보냄" if res.ok else "전송: 모두 보내지 못했습니다", 4000)
+        return res
+
+    def _multi_delete(self, cap, confirm: bool = True) -> bool:
+        """멀티 칸 '삭제' — 확인 후 그 사진을 이 PC 에서 지우고(export 사본은 남김) 멀티 칸에서도 뺀다."""
+        log.info("버튼: 멀티 칸 삭제")
+        if is_reference(cap):
+            return False
+        kind = "동영상" if cap.media_type == "video" else "사진"
+        if confirm and QMessageBox.question(
+                self, f"{kind} 삭제",
+                f"이 {kind}({cap.captured_at})을(를) 삭제하시겠습니까?\n\n"
+                "DB 기록과 저장된 파일(썸네일 포함)이 함께 지워지며 되돌릴 수 없습니다.\n"
+                "(지정 폴더에 복사된 사본은 남겨 둡니다)",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return False
+        if any(c.id == cap.id for c in self.thumbnail_panel.selected_captures()):
+            self.thumbnail_panel.toggle_selection(cap)   # → 멀티 칸에서 빠짐 (다 빠지면 라이브로)
+        ok = self._delete_capture(cap)
+        if self._multi:
+            items = self._multi_items()
+            if items:
+                self.multi_pro.set_grid(items)
+            else:
+                self._exit_multi(clear=False)
+        return ok
+
+    def _multi_remove(self, cap) -> None:
+        """멀티 칸 '멀티 화면에서 빼기' — 사진은 지우지 않고 칸에서만 뺀다."""
+        if is_reference(cap):
+            self.ref_bar.choose([r for r in self.ref_bar.selected_refs() if ref_key(r) != cap.id])
+        elif any(c.id == cap.id for c in self.thumbnail_panel.selected_captures()):
+            self.thumbnail_panel.toggle_selection(cap)
 
     def _on_multi_cell_activated(self, cap) -> None:
         """멀티 칸을 두 번 누름 → 큰 화면으로 (참조 사진은 분류 · 제목을 창 제목에)."""

@@ -56,6 +56,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
     QLabel,
+    QMenu,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -156,6 +157,10 @@ class ProWorkspace(QWidget):
     savedCapture = Signal()
     patientUpdated = Signal(object)
     smartModeChanged = Signal(str)          # LIVE 의 Smart 자동 촬영 모드 (off | freeze | snapshot)
+    # 멀티(embedded) 칸 메뉴 · 위 아이콘 줄 — 실제 전송 · 삭제 · 빼기는 메인 창이 한다
+    cellSendRequested = Signal(object)      # Capture (환자 사진)
+    cellDeleteRequested = Signal(object)    # Capture (환자 사진)
+    cellRemoveRequested = Signal(object)    # Capture | RefCapture — 멀티 화면에서만 빼기
 
     def __init__(self, db, service, config, get_eye, parent=None, embedded: bool = False):
         """embedded=True: 촬영 화면의 '멀티' — 위 도구줄 없이 사진 격자(grid 모드) + 오른쪽 메뉴만."""
@@ -200,6 +205,8 @@ class ProWorkspace(QWidget):
         self.grid_view.activeChanged.connect(lambda _cv: self._on_grid_active())
         self.grid_view.edited.connect(self._on_canvas_edited)
         self.grid_view.calibrated.connect(self.set_px_per_mm)
+        self.grid_view.contextRequested.connect(self._cell_menu)
+        self.grid_view.activeChanged.connect(lambda _cv: self._sync_cell_bar())
         self._shortcuts()
         self.set_px_per_mm(getattr(config, "px_per_mm", 0.0) or 0.0)
         self.set_mode(self._mode)
@@ -328,6 +335,9 @@ class ProWorkspace(QWidget):
         self.toolbar_scroll = HScroll(bar)          # 좁은 창: 버튼이 겹치지 않고 옆으로 밀어 보기
         self.toolbar_scroll.setVisible(not self.embedded)
         root.addWidget(self.toolbar_scroll)
+        self.cell_bar = None
+        if self.embedded:
+            root.addWidget(self._build_cell_bar())
 
         body = QHBoxLayout()
         body.setSpacing(8)
@@ -795,6 +805,7 @@ class ProWorkspace(QWidget):
         on = bool(on)
         self.side.setVisible(on)
         self.side_toggle.setChecked(on)
+        self.b_cell_edit.setChecked(on)
         self.side_toggle.setIcon(icons.icon("chev-r" if on else "chev-l", ICON, 14))
         self.side_toggle.setToolTip("보정 · 편집 · 분석 메뉴 접기" if on else "보정 · 편집 · 분석 메뉴 펴기")
         if save and getattr(self.config, "multi_side_visible", None) != on:
@@ -820,6 +831,92 @@ class ProWorkspace(QWidget):
         """멀티 격자에 놓을 사진 (환자 사진 · RefCapture)."""
         self.grid_view.set_captures(caps)
         self._on_grid_active()
+        self._sync_cell_bar()
+
+    # ---- 멀티: 칸 아이콘 줄 (전송 · 삭제 · 편집/분석) · 칸 오른쪽 클릭 메뉴 ----
+    def _build_cell_bar(self) -> QFrame:
+        bar = QFrame()
+        bar.setObjectName("MultiCellBar")
+        h = QHBoxLayout(bar)
+        h.setContentsMargins(6, 0, 6, 0)
+        h.setSpacing(4)
+        self.lbl_cell = QLabel("")
+        self.lbl_cell.setObjectName("Muted")
+        self.b_cell_send = self._btn("전송", "노란 테두리 칸의 사진을 보내기 (방법 · 형식은 설정 → 전송)", icon="send")
+        self.b_cell_delete = self._btn("삭제", "노란 테두리 칸의 사진을 이 PC 에서 삭제 (확인 후)",
+                                       obj="ProDanger", icon="trash", color=ICON_RECORD)
+        self.b_cell_edit = self._btn("편집 · 분석", "오른쪽 보정 · 편집 · 분석 메뉴 펴기 / 접기", checkable=True, icon="edit")
+        for b in (self.b_cell_send, self.b_cell_delete, self.b_cell_edit):
+            b.setMinimumHeight(30)
+        h.addWidget(self.lbl_cell)
+        h.addWidget(self.b_cell_send)
+        h.addWidget(self.b_cell_delete)
+        h.addWidget(self.b_cell_edit)
+        h.addStretch(1)
+        hint = QLabel("사진 위에서 마우스 오른쪽 = 메뉴")
+        hint.setObjectName("Muted")
+        h.addWidget(hint)
+        self.b_cell_send.clicked.connect(lambda: self._cell_action("send"))
+        self.b_cell_delete.clicked.connect(lambda: self._cell_action("delete"))
+        self.b_cell_edit.clicked.connect(lambda on: self.set_side_visible(on))
+        self.cell_bar = bar
+        return bar
+
+    def _sync_cell_bar(self) -> None:
+        if self.cell_bar is None:
+            return
+        cap = self.grid_view.active_capture()
+        patient_photo = cap is not None and not is_reference(cap)
+        self.b_cell_send.setEnabled(patient_photo)
+        self.b_cell_delete.setEnabled(patient_photo)
+        if cap is None:
+            self.lbl_cell.setText("")
+        else:
+            i = self.grid_view.index_of(self.grid_view.active_canvas()) + 1
+            many = self.grid_view.count() > 1
+            self.lbl_cell.setText((f"{i}번 칸 (노란 테두리)" if many else "이 사진")
+                                  + ("" if patient_photo else " · 참조 사진 — 전송 · 삭제 없음") + " :")
+
+    def _cell_action(self, action: str, cap=None) -> None:
+        cap = cap if cap is not None else self.grid_view.active_capture()
+        if cap is None:
+            return
+        if action == "edit":
+            self.set_side_visible(not self.side_visible())
+        elif action == "remove":
+            self.cellRemoveRequested.emit(cap)
+        elif is_reference(cap):
+            return                                   # 참조 사진은 보내거나 지우지 않는다
+        elif action == "send":
+            self.cellSendRequested.emit(cap)
+        elif action == "delete":
+            self.cellDeleteRequested.emit(cap)
+
+    @staticmethod
+    def _exec_menu(menu, pos):
+        return menu.exec(pos)
+
+    def _cell_menu(self, cap, global_pos) -> str | None:
+        """멀티 칸에서 마우스 오른쪽: 전송 · 삭제 · 편집/분석 · 멀티에서 빼기. 고른 항목 이름을 돌려준다."""
+        if not self.embedded or cap is None:
+            return None
+        ref = is_reference(cap)
+        menu = QMenu(self)
+        a_send = menu.addAction(icons.icon("send", ICON, 16), "전송")
+        a_del = menu.addAction(icons.icon("trash", ICON_RECORD, 16), "삭제 (이 PC 에서)")
+        a_edit = menu.addAction(icons.icon("edit", ICON, 16),
+                                "편집 · 분석 메뉴 접기" if self.side_visible() else "편집 · 분석 메뉴 열기")
+        menu.addSeparator()
+        a_out = menu.addAction(icons.icon("x", ICON, 16), "멀티 화면에서 빼기")
+        for a in (a_send, a_del):
+            a.setEnabled(not ref)
+        if ref:
+            a_send.setToolTip("참조 사진은 보내거나 지울 수 없습니다")
+        picked = self._exec_menu(menu, global_pos)
+        action = {a_send: "send", a_del: "delete", a_edit: "edit", a_out: "remove"}.get(picked)
+        if action:
+            self._cell_action(action, cap)
+        return action
 
     def _update_info(self) -> None:
         p = self._patient

@@ -10,7 +10,9 @@ after_capture=True: 사진을 찍은 직후 자동으로 뜨는 큰 화면. '다
 돌아간다. capture_keys 로 준 촬영 단축키를 누르면 retakeRequested 가 나가 메인 창이 창을 닫고 초기화(기본 —
 라이브 촬영 화면) 또는 바로 다시 찍는다 (설정 → 촬영 → '큰 화면 · 멀티에서 촬영 버튼', config.capture_in_view).
 아래쪽 '전송' · '전송(삭제)' 를 누르면 sendRequested · sendDeleteRequested 가 나가 메인 창이 이 사진 1장을 보낸다
-(전송(삭제)는 모두 보냈을 때만 확인 후 이 PC 에서 지우고 창을 닫음).
+(전송(삭제)는 모두 보냈을 때만 확인 후 이 PC 에서 지우고 창을 닫음). '편집 · 분석' 은 editRequested — 메인 창이
+창을 닫고 이 사진을 멀티 화면에 놓고 보정 · 편집 · 분석 메뉴를 편다.
+사진 위에서 마우스 오른쪽 = 같은 메뉴 (전송 · 전송(삭제) · 편집 · 분석 · 삭제 — 보기만 하는 창은 삭제만).
 """
 from __future__ import annotations
 
@@ -26,6 +28,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QMessageBox,
     QPushButton,
     QVBoxLayout,
@@ -67,6 +70,7 @@ class ImageViewerDialog(QDialog):
     sendDeleteRequested = Signal()  # '전송(삭제)' — 보낸 뒤 이 PC 에서 삭제 (모두 보냈을 때만, 확인 후)
     dxClicked = Signal(str, str)  # 질환 아이콘 (source, 분류) — 메인 창이 이 사진과 그 질환 샘플을 멀티 화면에
     dxPhotoClicked = Signal(str, str, int)  # 질환 아이콘 미리보기에서 사진 한 장 — 이 사진과 그 사진만 멀티 화면에
+    editRequested = Signal()     # 촬영 뒤 보기 창의 '편집 · 분석' — 이 사진을 멀티 화면 + 보정 · 편집 · 분석 메뉴로
 
     def __init__(self, capture, parent=None, allow_delete: bool = True, after_capture: bool = False,
                  capture_keys=(), dx_categories=None, dx_preview=None):
@@ -76,6 +80,7 @@ class ImageViewerDialog(QDialog):
         self.b_retake = None
         self.b_send = None
         self.b_send_delete = None
+        self.b_edit = None
         self.dx_bar = None
         self.setWindowTitle((f"촬영한 사진 - {capture.captured_at}" if after_capture else f"보기 - {capture.captured_at}"))
         self.resize(920, 720)
@@ -138,7 +143,8 @@ class ImageViewerDialog(QDialog):
         self.b_fit.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         bar.addWidget(self.b_fit)
         hint = QLabel("누르고 있으면 확대 렌즈 · 휠로 확대 · 축소"
-                      + ("   ·   '다시 촬영' 또는 촬영 키 · USB 버튼으로 촬영 화면으로" if self.after_capture else ""))
+                      + ("   ·   '다시 촬영' 또는 촬영 키 · USB 버튼으로 촬영 화면으로   ·   마우스 오른쪽 = 메뉴"
+                         if self.after_capture else ""))
         hint.setObjectName("Muted")
         bar.addWidget(hint)
         bar.addStretch(1)
@@ -147,6 +153,9 @@ class ImageViewerDialog(QDialog):
         self.canvas = ImageCanvas()
         self.canvas._placeholder = "이미지를 불러올 수 없습니다."
         self.canvas.set_image(_load_bgr(capture.file_path))
+        self.canvas.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.canvas.customContextMenuRequested.connect(
+            lambda pos: self.context_menu(self.canvas.viewport().mapToGlobal(pos)))
         lay.addWidget(self.canvas, 1)
         self.b_fit.clicked.connect(self.canvas.reset_view)
         self.set_tool("magnify")
@@ -190,11 +199,19 @@ class ImageViewerDialog(QDialog):
             self.b_send_delete.setToolTip("이 사진을 보낸 뒤 이 PC 에서 삭제 — 모두 보냈을 때만, 확인 후 (창이 닫힙니다)")
             self.b_send_delete.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             self.b_send_delete.clicked.connect(lambda: self.sendDeleteRequested.emit())
+            self.b_edit = QPushButton(icons.gap("편집 · 분석"))
+            self.b_edit.setIcon(icons.icon("edit", ICON, 18))
+            self.b_edit.setIconSize(QSize(18, 18))
+            self.b_edit.setMinimumHeight(40)
+            self.b_edit.setToolTip("이 사진을 멀티 화면에 놓고 오른쪽 보정 · 편집 · 분석 메뉴를 엽니다 (창이 닫힙니다)")
+            self.b_edit.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            self.b_edit.clicked.connect(lambda: self.editRequested.emit())
             self.lbl_sent = QLabel("")
             self.lbl_sent.setObjectName("Muted")
             foot.addWidget(self.lbl_sent)
             foot.addWidget(self.b_send)
             foot.addWidget(self.b_send_delete)
+            foot.addWidget(self.b_edit)
             foot.addSpacing(12)
         if self.after_capture:
             # 촬영 직후 화면: 큰 버튼 하나로 촬영 화면 복귀 (Enter · Esc 도 같음)
@@ -212,6 +229,36 @@ class ImageViewerDialog(QDialog):
             b_close.setDefault(True)
         foot.addWidget(b_close)
         return foot
+
+    @staticmethod
+    def _exec_menu(menu, pos):
+        return menu.exec(pos)
+
+    def context_menu(self, global_pos) -> str | None:
+        """사진 위에서 마우스 오른쪽: 전송 · 전송(삭제) · 편집 · 분석 · 삭제 (아래 버튼과 같음). 고른 항목 이름을 돌려준다."""
+        menu = QMenu(self)
+        acts = {}
+        if self.b_send is not None:
+            acts[menu.addAction(icons.icon("send", ICON, 16), "전송")] = "send"
+            acts[menu.addAction(icons.icon("send", "#ef4f4c", 16), "전송(삭제)")] = "send_delete"
+        if self.b_edit is not None:
+            acts[menu.addAction(icons.icon("edit", ICON, 16), "편집 · 분석")] = "edit"
+        if not self.b_delete.isHidden():
+            if acts:
+                menu.addSeparator()
+            acts[menu.addAction(icons.icon("trash", "#ef4f4c", 16), "삭제")] = "delete"
+        if not acts:
+            return None
+        action = acts.get(self._exec_menu(menu, global_pos))
+        if action == "send":
+            self.sendRequested.emit()
+        elif action == "send_delete":
+            self.sendDeleteRequested.emit()
+        elif action == "edit":
+            self.editRequested.emit()
+        elif action == "delete":
+            self._confirm_delete()
+        return action
 
     def mark_sent(self) -> None:
         """전송을 마쳤다는 표시 (같은 사진을 두 번 보내지 않게 눈으로 확인)."""

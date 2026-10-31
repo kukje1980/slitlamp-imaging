@@ -241,3 +241,10 @@ v1.8.0 이후 `main` 에 들어온 변경을 모두 합친 최종판입니다 (`
   `_on_usb_button`(`_usb_viewer_closed_at` — 보기 창을 닫은 그 누름이면 화면 검사보다 먼저 초기화).
 - **보기 창 전송**: `MainWindow._send_captures(caps, parent)` 로 나눔(`_on_send` 는 목록 선택을 넘김, 사진의 환자로 보냄),
   `ImageViewerDialog.sendRequested` · `sendDeleteRequested` → `_send_from_viewer`(전송(삭제)는 모두 보냈을 때만 확인 후 `Deleted`).
+
+## v1.20.4 — 2026-10-31
+- **확대한 사진 끌어서 이동**(`app/ui/pro/image_canvas.py`): 돋보기 도구에서 사진이 창보다 크게 확대돼 있으면(`ImageCanvas.can_pan()` —
+  스크롤할 곳이 있음) 왼쪽 버튼 끌기 = 스크롤 이동(`_pan_from`), 아니면 예전처럼 누르는 동안 확대 렌즈. 커서는 스크롤 범위가 바뀔 때
+  `_update_cursor` 가 손(이동) ↔ 십자(렌즈)로 바꾸고, 끄는 동안은 쥔 손. 버튼 없이 움직이면(창 밖에서 놓음) 이동 끝,
+  `set_image(keep_view=True)`(라이브 새 프레임)에는 끌던 이동 유지. 촬영 직후 큰 화면 · 보기 창(`ImageViewerDialog`) · 멀티 칸(`MultiView`) ·
+  Pro 단일 · 비교 화면에 같이 적용. 보기 창 안내 · 툴팁 문구 갱신. 시험 `tests/test_v1204.py`.

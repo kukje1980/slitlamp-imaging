@@ -9,7 +9,7 @@
 
 #define MyAppName "Keeler 슬릿램프 영상 시스템 Explorer"
 #define MyAppNameEn "KeelerExplorer"
-#define MyAppVersion "1.20.3"
+#define MyAppVersion "1.20.4"
 #define MyAppPublisher "Kukje"
 #define MyAppExeName "KeelerExplorer.exe"
 

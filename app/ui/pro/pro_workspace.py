@@ -102,7 +102,7 @@ _DENOISE = ["none", "median", "average"]
 # (도구, 버튼 텍스트, 설명, 허용 모드)
 _TOOLS = [
     ("pan", "이동", "이동 / 휠 확대", ("single", "compare", "grid")),
-    ("magnify", "돋보기", "누르고 있는 동안 확대 렌즈", ("single", "compare", "live", "grid")),
+    ("magnify", "돋보기", "누르고 있는 동안 확대 렌즈 (휠로 확대하면 끌어서 이동)", ("single", "compare", "live", "grid")),
     ("crop", "자르기", "드래그한 영역만 남김", ("single", "grid")),
     ("text", "텍스트", "클릭한 위치에 텍스트 주석", ("single", "compare", "grid")),
     ("arrow", "화살표", "드래그해 화살표 주석", ("single", "compare", "grid")),

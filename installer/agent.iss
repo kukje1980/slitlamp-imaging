@@ -9,7 +9,7 @@
 
 #define MyAppName "슬릿램프 영상 시스템 AI 에이전트"
 #define MyAppNameEn "SlitLampAgent"
-#define MyAppVersion "1.20.3"
+#define MyAppVersion "1.20.4"
 #define MyAppPublisher "Kukje"
 #define MyAppExeName "SlitLampAgent.exe"
 

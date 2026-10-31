@@ -131,7 +131,11 @@ def test_snapshot_db_live_copy_and_daily_history(tmp_path):
     con.execute("INSERT INTO t VALUES (1)")
     con.commit()                                                                         # 연결을 연 채로 (앱이 쓰는 중)
     out = bs.snapshot_db(db, tmp_path / "set" / "db", D1, keep=2)
-    assert sqlite3.connect(out).execute("SELECT v FROM t").fetchall() == [(1,)]
+    chk = sqlite3.connect(out)
+    try:
+        assert chk.execute("SELECT v FROM t").fetchall() == [(1,)]
+    finally:
+        chk.close()                                                                      # 윈도우: 연 파일은 바꿔 넣을 수 없다
     for d in (D2, D3):
         bs.snapshot_db(db, tmp_path / "set" / "db", d, keep=2)
     hist = sorted(p.name for p in (tmp_path / "set" / "db" / "history").iterdir())
@@ -406,7 +410,7 @@ def test_stop_during_big_copy_returns_quickly_without_partial_file(qapp, app_env
     m, config, db = _mgr(app_env, root)
     big = Path(config.media_root) / "P" / "d" / "big.mp4"
     big.parent.mkdir(parents=True)
-    big.write_bytes(os.urandom(4 * 1024 * 1024))
+    big.write_bytes(os.urandom(32 * 1024 * 1024))                                        # 빠른 PC 에서도 '복사 도중' 에 멈추도록 크게
     _old(big)
     monkeypatch.setattr(bs, "CHUNK", 8)                                                  # 아주 느린 복사 (큰 동영상 대신)
     assert m.backup_now()
@@ -485,3 +489,28 @@ def test_explorer_window_backs_up_capture_and_menu(qapp, app_env, tmp_path, monk
         w.close()
         w.deleteLater()
         qapp.processEvents()
+
+
+def test_replace_retries_when_windows_holds_the_file(tmp_path, monkeypatch):
+    """윈도우에서 대상 파일을 잠깐 잡고 있으면(WinError 5) 기다렸다가 다시 바꿔 넣는다."""
+    src, dst = tmp_path / "a.tmp", tmp_path / "a.db"
+    src.write_bytes(b"new")
+    dst.write_bytes(b"old")
+    real, calls = os.replace, []
+
+    def flaky(a, b):
+        calls.append(1)
+        if len(calls) < 3:
+            raise PermissionError(13, "Access is denied")
+        real(a, b)
+
+    monkeypatch.setattr(bs.os, "replace", flaky)
+    monkeypatch.setattr(bs.os, "name", "nt")
+    monkeypatch.setattr(bs.time, "sleep", lambda s: None)
+    bs._replace(src, dst)
+    assert len(calls) == 3 and dst.read_bytes() == b"new"
+    monkeypatch.setattr(bs.os, "name", "posix")                                          # 다른 OS 는 바로 오류
+    calls.clear()
+    src.write_bytes(b"x")
+    with pytest.raises(PermissionError):
+        bs._replace(src, dst)

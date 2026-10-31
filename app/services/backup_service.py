@@ -194,6 +194,19 @@ def _read_info(folder: Path) -> dict | None:
     return data if isinstance(data, dict) and data.get("set_id") else None
 
 
+def _replace(tmp: Path, dst: Path, tries: int = 10) -> None:
+    """os.replace — 윈도우에서 백신 검사 · 색인 · 열린 연결이 대상 파일을 잠깐 잡고 있으면 '접근 거부'(WinError 5)가
+    나므로, 조금씩 기다리며 다시 시도한다 (최대 약 2.75초). 다른 OS 와 다른 오류는 바로 올린다."""
+    for i in range(tries):
+        try:
+            os.replace(tmp, dst)
+            return
+        except PermissionError:
+            if os.name != "nt" or i == tries - 1:
+                raise
+            time.sleep(0.05 * (i + 1))
+
+
 def _atomic_write(path: Path, data: bytes) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -203,7 +216,7 @@ def _atomic_write(path: Path, data: bytes) -> None:
             f.write(data)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp, path)
+        _replace(tmp, path)
     except OSError as e:
         try:
             tmp.unlink()
@@ -366,7 +379,7 @@ def copy_file(src, dst, min_free_mb: float = MIN_FREE_MB, cancel=None) -> int:
             fo.flush()
             os.fsync(fo.fileno())            # 하드를 바로 뽑아도 바꿔 넣은 파일은 내용까지 있게
         shutil.copystat(src, tmp)
-        os.replace(tmp, dst)
+        _replace(tmp, dst)
     except BaseException as e:
         try:
             tmp.unlink()
